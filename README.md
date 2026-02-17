@@ -4,9 +4,9 @@
 
 If you simply want to play the game and do not wish to build the code (windows only): 
 
-1.  Download the **`release.zip`** file provided in this repository.
+1.  Download the **`Latest release`** provided.
 2.  Extract the contents to a folder on your computer.
-3.  Double-click `Project.exe` to run.
+3.  Find and double-click `Project.exe` to run.
 
 ### Prerequisites
 - **Linux:** `sudo apt install libglew-dev libglfw3-dev cmake build-essential`
