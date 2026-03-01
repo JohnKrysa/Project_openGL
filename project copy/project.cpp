@@ -4,12 +4,13 @@
 #include <iostream>
 
 static unsigned int CompileShader(unsigned int type, const std::string& source) {
-    unsigned int id = glCreateShader(type);
+    unsigned int id = glCreateShader(type); // vytvorim objekt na GPU
     const char* src = source.c_str();
     
-    glShaderSource(id, 1, &src, nullptr);
-    glCompileShader(id);
+    glShaderSource(id, 1, &src, nullptr); //nahraje zdrojak do shader objektu
+    glCompileShader(id); // prelozi GLSL do GPU instrukci
 
+    // vypisovani chyby kdyz shader nefakci
     int result;
     glGetShaderiv(id, GL_COMPILE_STATUS, &result);
     if (!result) {
@@ -26,10 +27,10 @@ static unsigned int CompileShader(unsigned int type, const std::string& source) 
 }
 
 
-static int CreateShader(const std::string& vertexShader, const std::string& fragmentShader) {
+static int CreateShader(const std::string& vertex_shader, const std::string& fragment_shader) {
     unsigned int program = glCreateProgram();
-    unsigned int vs = CompileShader(GL_VERTEX_SHADER, vertexShader);
-    unsigned int fs = CompileShader(GL_FRAGMENT_SHADER, fragmentShader);
+    unsigned int vs = CompileShader(GL_VERTEX_SHADER, vertex_shader);
+    unsigned int fs = CompileShader(GL_FRAGMENT_SHADER, fragment_shader);
 
 
     glAttachShader(program, vs);
@@ -37,7 +38,7 @@ static int CreateShader(const std::string& vertexShader, const std::string& frag
     glLinkProgram(program);
     glValidateProgram(program);
 
-    glDeleteShader(vs);
+    glDeleteShader(vs); //po linknuti uz nejsou potreba
     glDeleteShader(fs);
 
     return program;
@@ -77,7 +78,7 @@ int main() {
     glEnableVertexAttribArray(0);
 
 
-    std::string vertexShader = 
+    std::string vertex_shader = 
         "#version 330 core\n"
         "\n"
         "layout(location = 0) in vec4 triangle;"
@@ -87,7 +88,7 @@ int main() {
         "   gl_Position = triangle;\n"
         "}\n";
     
-    std::string fragmentShader = 
+    std::string fragment_shader = 
         "#version 330 core\n"
         "\n"
         "out vec4 color;"
@@ -98,7 +99,7 @@ int main() {
         "}\n";
 
 
-    unsigned int shader = CreateShader(vertexShader, fragmentShader);
+    unsigned int shader = CreateShader(vertex_shader, fragment_shader);
     glUseProgram(shader);
 
 
