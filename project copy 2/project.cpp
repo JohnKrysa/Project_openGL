@@ -72,10 +72,12 @@ int          editorCursorCol      = 0;
 int          editorCursorRow      = 0;
 float        editorTime           = 0.0f;
 AttackType   editorSelectedType   = NORMAL;
+int          editorSelectedEdge   = 0; 
 bool         editorPlaying        = false;
 float        editorPlayStart      = 0.0f;
 size_t       editorNextEvent      = 0;
 bool         levelMode            = false; 
+bool         isDraggingTimeline   = false; 
 
 bool isFullscreen  = false;
 int  savedWidth    = 900, savedHeight = 900;
@@ -112,6 +114,18 @@ void ResetGame(GLFWwindow* window) {
     score             = 0;
     editorNextEvent   = 0;
     glfwSetWindowTitle(window, "Grid Dodge");
+}
+
+void GetAttackColor(AttackType t, float& r, float& g, float& b) {
+    switch (t) {
+        case NORMAL:      r=1.0f; g=0.1f; b=0.6f; break;
+        case LASER:       r=0.0f; g=1.0f; b=1.0f; break;
+        case BOOMERANG:   r=1.0f; g=0.6f; b=0.1f; break;
+        case LONG_LASER:  r=1.0f; g=0.8f; b=0.0f; break;
+        case TILE_DMG:    r=1.0f; g=0.2f; b=0.2f; break;
+        case MOVING_LASER:r=0.2f; g=1.0f; b=0.2f; break;
+        default:          r=1.0f; g=1.0f; b=1.0f; break;
+    }
 }
 
 void SpawnAttack(float playerX, float playerY) {
@@ -156,23 +170,39 @@ void SpawnAttack(float playerX, float playerY) {
     }
 }
 
-void SpawnFromEvent(const LevelEvent& ev) {
+void SpawnFromEvent(const LevelEvent& ev, std::vector<Attack>& targetContainer) {
     float speed = 1.2f * globalSpeedMultiplier;
     float sx = 0, sy = 0, dx = 0, dy = 0;
-    float tx = gridCoords[std::min(ev.gridCol, gridCells-1)];
-    float ty = gridCoords[std::min(ev.gridRow, gridCells-1)];
+    float tx = gridCoords[std::min(ev.gridCol, (int)gridCoords.size()-1)];
+    float ty = gridCoords[std::min(ev.gridRow, (int)gridCoords.size()-1)];
 
     if      (ev.edge == 0) { sx = tx; sy =  1.4f; dy = -speed; }
     else if (ev.edge == 1) { sx = tx; sy = -1.4f; dy =  speed; }
     else if (ev.edge == 2) { sx = -1.4f; sy = ty; dx =  speed; }
     else if (ev.edge == 3) { sx =  1.4f; sy = ty; dx = -speed; }
-    else { 
-        float atx = cubeOffsetX - sx, aty = cubeOffsetY - sy;
-        float len = std::sqrt(atx*atx + aty*aty);
-        if (len != 0) { atx /= len; aty /= len; }
-        sx = tx; sy = ty; dx = atx * speed * 1.5f; dy = aty * speed * 1.5f;
+    
+    float w = 0.3f, h = 0.3f;
+    
+    if (ev.type == LASER || ev.type == LONG_LASER) {
+        if (ev.edge == 0 || ev.edge == 1) { w = 2.8f; h = 0.15f; sx = 0.0f; sy = ty; dx = 0; dy = 0; }
+        else                              { w = 0.15f; h = 2.8f; sx = tx; sy = 0.0f; dx = 0; dy = 0; }
+    } 
+    else if (ev.type == MOVING_LASER) {
+        if (ev.edge == 0)      { sx = 0.0f; sy =  1.4f; dx = 0.0f;        dy = -speed * 0.25f; w = 2.8f; h = 0.15f; }
+        else if (ev.edge == 1) { sx = 0.0f; sy = -1.4f; dx = 0.0f;        dy =  speed * 0.25f; w = 2.8f; h = 0.15f; }
+        else if (ev.edge == 2) { sx = -1.4f; sy = 0.0f; dx =  speed * 0.25f; dy = 0.0f;        w = 0.15f; h = 2.8f; }
+        else                   { sx =  1.4f; sy = 0.0f; dx = -speed * 0.25f; dy = 0.0f;        w = 0.15f; h = 2.8f; }
+    } else if (ev.type == TILE_DMG) {
+        w = 0.8f; h = 0.8f; sx = tx; sy = ty; dx = 0; dy = 0;
     }
-    attacks.push_back({ ev.type, sx, sy, dx, dy, 1.0f, 0.1f, 0.6f, 0,0,false,true,0.3f,0.3f });
+    
+    float r = 1.0f, g = 1.0f, b = 1.0f;
+    GetAttackColor(ev.type, r, g, b);
+
+    bool active = true;
+    if (ev.type == LASER || ev.type == LONG_LASER || ev.type == TILE_DMG) active = false;
+
+    targetContainer.push_back({ ev.type, sx, sy, dx, dy, r, g, b, 0.0f, 0.0f, false, active, w, h });
 }
 
 bool checkCollision(float ax, float ay, float aw, float ah) {
@@ -285,6 +315,7 @@ std::vector<float> GenerateText(const std::string& str, float startX, float star
         case '/': AddLine(pts,0.2f,0,0.8f,2,x,startY,scale); break;
         case ',': AddLine(pts,0.5f,0.3f,0.3f,-0.2f,x,startY,scale); break;
         case '-': AddLine(pts,0.2f,1.0f,0.8f,1.0f,x,startY,scale); break;
+        case '+': AddLine(pts,0.5f,0.2f,0.5f,1.8f,x,startY,scale); AddLine(pts,0.1f,1.0f,0.9f,1.0f,x,startY,scale); break;
         default: break;
         }
         x += scale * 1.6f;
@@ -307,29 +338,46 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
 }
 
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
-    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-        double mouseX, mouseY;
-        glfwGetCursorPos(window, &mouseX, &mouseY);
-        int width, height;
-        glfwGetWindowSize(window, &width, &height);
-        
-        float aspect = (height > 0) ? (float)width / (float)height : 1.0f;
-        float x = (((mouseX / width)  * 2.0f - 1.0f) * aspect) / 0.7f;
-        float y = (-((mouseY / height) * 2.0f - 1.0f)) / 0.7f;
+    double mouseX, mouseY;
+    glfwGetCursorPos(window, &mouseX, &mouseY);
+    int width, height;
+    glfwGetWindowSize(window, &width, &height);
+    
+    float aspect = (height > 0) ? (float)width / (float)height : 1.0f;
+    float x = (((mouseX / width)  * 2.0f - 1.0f) * aspect) / 0.7f;
+    float y = (-((mouseY / height) * 2.0f - 1.0f)) / 0.7f;
 
-        auto IsHovered = [x, y](float bx, float by, float bw, float bh) {
-            return std::abs(x - bx) < bw / 2.0f && std::abs(y - by) < bh / 2.0f;
-        };
+    auto IsHovered = [x, y](float bx, float by, float bw, float bh) {
+        return std::abs(x - bx) < bw / 2.0f && std::abs(y - by) < bh / 2.0f;
+    };
 
-        if (currentState == MENU) {
-            if (IsHovered(0.0f, 0.35f, 1.1f, 0.35f)) { ResetGame(window); currentState = GAME; levelMode = false; }
-            else if (IsHovered(0.0f, 0.00f, 1.1f, 0.35f)) { currentState = SETTINGS; }
-            else if (IsHovered(0.0f, -0.35f, 1.1f, 0.35f)) { currentState = LEVEL_EDITOR; }
-            else if (IsHovered(0.0f, -0.72f, 1.1f, 0.35f)) { glfwSetWindowShouldClose(window, true); }
-        } else if (currentState == SETTINGS || currentState == GAME_OVER) {
-            if (IsHovered(0.0f, -0.72f, 1.1f, 0.35f)) { currentState = MENU; }
-        } else if (currentState == LEVEL_EDITOR) {
-            if (IsHovered(0.9f, -0.8f, 0.8f, 0.25f)) { currentState = MENU; }
+    if (button == GLFW_MOUSE_BUTTON_LEFT) {
+        if (action == GLFW_PRESS) {
+            if (currentState == MENU) {
+                if (IsHovered(0.0f, 0.40f, 1.1f, 0.22f)) { ResetGame(window); currentState = GAME; levelMode = false; }
+                else if (IsHovered(0.0f, 0.10f, 1.1f, 0.22f)) { currentState = SETTINGS; }
+                else if (IsHovered(0.0f, -0.20f, 1.1f, 0.22f)) { currentState = LEVEL_EDITOR; }
+                else if (IsHovered(0.0f, -0.50f, 1.1f, 0.22f)) { glfwSetWindowShouldClose(window, true); }
+            } else if (currentState == SETTINGS || currentState == GAME_OVER) {
+                if (IsHovered(0.0f, -0.78f, 1.1f, 0.25f)) { currentState = MENU; }
+            } else if (currentState == LEVEL_EDITOR) {
+                if (IsHovered(1.10f, -0.80f, 0.5f, 0.2f)) { currentState = MENU; }
+                
+                if (IsHovered(1.10f - 0.22f, -0.58f, 0.15f, 0.15f)) { 
+                    currentLevel.duration = std::max(10.0f, currentLevel.duration - 10.0f); 
+                    editorTime = std::min(editorTime, currentLevel.duration);
+                }
+                if (IsHovered(1.10f + 0.22f, -0.58f, 0.15f, 0.15f)) { 
+                    currentLevel.duration += 10.0f; 
+                }
+
+                if (x >= -1.3f && x <= 0.3f && std::abs(y - (-0.85f)) < 0.1f) {
+                    isDraggingTimeline = true;
+                }
+            }
+        } 
+        else if (action == GLFW_RELEASE) {
+            isDraggingTimeline = false;
         }
     }
 }
@@ -367,13 +415,17 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
             if (key == GLFW_KEY_UP)    editorCursorRow = std::min(editorCursorRow+1, gridCells-1);
 
             if (key == GLFW_KEY_COMMA)  editorTime = std::max(0.0f, editorTime - 0.5f);
-            if (key == GLFW_KEY_PERIOD) editorTime += 0.5f;
+            if (key == GLFW_KEY_PERIOD) editorTime = std::min(currentLevel.duration, editorTime + 0.5f);
+
+            if (key == GLFW_KEY_R && action == GLFW_PRESS) {
+                editorSelectedEdge = (editorSelectedEdge + 1) % 4;
+            }
 
             if (key == GLFW_KEY_SPACE) {
-                currentLevel.events.push_back({ editorSelectedType, editorTime, editorCursorCol, editorCursorRow, 1 });
+                currentLevel.events.push_back({ editorSelectedType, editorTime, editorCursorCol, editorCursorRow, editorSelectedEdge });
                 std::sort(currentLevel.events.begin(), currentLevel.events.end(),
                     [](const LevelEvent& a, const LevelEvent& b){ return a.triggerTime < b.triggerTime; });
-                editorTime += 0.5f;
+                editorTime = std::min(currentLevel.duration, editorTime + 0.5f);
             }
 
             if (key == GLFW_KEY_BACKSPACE && !currentLevel.events.empty())
@@ -386,10 +438,10 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
             if (key == GLFW_KEY_5) editorSelectedType = TILE_DMG;
             if (key == GLFW_KEY_6) editorSelectedType = MOVING_LASER;
 
-            if (key == GLFW_KEY_P) {
+            if (key == GLFW_KEY_P && action == GLFW_PRESS) {
                 editorPlaying = !editorPlaying;
                 if (editorPlaying) {
-                    editorPlayStart   = (float)glfwGetTime();
+                    editorPlayStart   = (float)glfwGetTime() - editorTime; 
                     editorNextEvent   = 0;
                     attacks.clear();
                     cubeOffsetX = targetOffsetX = 0;
@@ -397,8 +449,9 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
                 }
             }
 
-            if (key == GLFW_KEY_E) {
+            if (key == GLFW_KEY_E && action == GLFW_PRESS) {
                 std::cout << "\nLevel myLevel;\n";
+                std::cout << "myLevel.duration = " << currentLevel.duration << "f;\n";
                 for (auto& ev : currentLevel.events) {
                     std::cout << "myLevel.events.push_back({"
                         << ev.type << ", " << ev.triggerTime << "f, "
@@ -406,34 +459,22 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
                 }
             }
 
-            if (key == GLFW_KEY_DELETE) currentLevel.events.clear();
+            if (key == GLFW_KEY_DELETE && action == GLFW_PRESS) currentLevel.events.clear();
         }
 
-        if (key == GLFW_KEY_ESCAPE) currentState = MENU;
+        if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) currentState = MENU;
 
-        if (currentState == SETTINGS && key == GLFW_KEY_G) {
+        if (currentState == SETTINGS && key == GLFW_KEY_G && action == GLFW_PRESS) {
             int nextSize = gridCells + 2;
             if (nextSize > 15) nextSize = 5;
             SetGridSize(nextSize);
             UpdateGridVAO();
         }
 
-        if (key == GLFW_KEY_F1) { if (isFullscreen) ToggleFullscreen(window); glfwSetWindowSize(window, 600, 600); }
-        if (key == GLFW_KEY_F2) { if (isFullscreen) ToggleFullscreen(window); glfwSetWindowSize(window, 900, 900); }
-        if (key == GLFW_KEY_F3) { if (isFullscreen) ToggleFullscreen(window); glfwSetWindowSize(window, 1200, 900); }
-        if (key == GLFW_KEY_F4) { ToggleFullscreen(window); }
-    }
-}
-
-void GetAttackColor(AttackType t, float& r, float& g, float& b) {
-    switch (t) {
-        case NORMAL:      r=1.0f; g=0.1f; b=0.6f; break;
-        case LASER:       r=0.0f; g=1.0f; b=1.0f; break;
-        case BOOMERANG:   r=1.0f; g=0.6f; b=0.1f; break;
-        case LONG_LASER:  r=1.0f; g=0.8f; b=0.0f; break;
-        case TILE_DMG:    r=1.0f; g=0.2f; b=0.2f; break;
-        case MOVING_LASER:r=0.2f; g=1.0f; b=0.2f; break;
-        default:          r=1.0f; g=1.0f; b=1.0f; break;
+        if (key == GLFW_KEY_F1 && action == GLFW_PRESS) { if (isFullscreen) ToggleFullscreen(window); glfwSetWindowSize(window, 600, 600); }
+        if (key == GLFW_KEY_F2 && action == GLFW_PRESS) { if (isFullscreen) ToggleFullscreen(window); glfwSetWindowSize(window, 900, 900); }
+        if (key == GLFW_KEY_F3 && action == GLFW_PRESS) { if (isFullscreen) ToggleFullscreen(window); glfwSetWindowSize(window, 1200, 900); }
+        if (key == GLFW_KEY_F4 && action == GLFW_PRESS) { ToggleFullscreen(window); }
     }
 }
 
@@ -535,6 +576,11 @@ int main() {
             return std::abs(hx - bx) < bw/2.0f && std::abs(hy - by) < bh/2.0f;
         };
 
+        if (currentState == LEVEL_EDITOR && isDraggingTimeline) {
+            float ratio = (hx - (-1.3f)) / (0.3f - (-1.3f)); 
+            editorTime = std::max(0.0f, std::min(ratio * currentLevel.duration, currentLevel.duration));
+        }
+
         if (currentState == GAME) {
             gameTime += deltaTime;
             score = (int)(gameTime * 10.0f);
@@ -547,7 +593,7 @@ int main() {
 
             if (levelMode) {
                 while (editorNextEvent < currentLevel.events.size() && currentLevel.events[editorNextEvent].triggerTime <= gameTime) {
-                    SpawnFromEvent(currentLevel.events[editorNextEvent]);
+                    SpawnFromEvent(currentLevel.events[editorNextEvent], attacks);
                     editorNextEvent++;
                 }
             } else {
@@ -596,12 +642,14 @@ int main() {
 
         if (currentState == LEVEL_EDITOR && editorPlaying) {
             float elapsed = currentFrame - editorPlayStart;
+            editorTime = elapsed; 
+            
             globalSpeedMultiplier = 1.0f;
             cubeOffsetX += (targetOffsetX - cubeOffsetX) * 15.0f * deltaTime;
             cubeOffsetY += (targetOffsetY - cubeOffsetY) * 15.0f * deltaTime;
 
             while (editorNextEvent < currentLevel.events.size() && currentLevel.events[editorNextEvent].triggerTime <= elapsed) {
-                SpawnFromEvent(currentLevel.events[editorNextEvent]);
+                SpawnFromEvent(currentLevel.events[editorNextEvent], attacks);
                 editorNextEvent++;
             }
 
@@ -612,7 +660,11 @@ int main() {
                     it = attacks.erase(it);
                 else ++it;
             }
-            if (elapsed > currentLevel.duration) { editorPlaying = false; attacks.clear(); }
+            if (elapsed > currentLevel.duration) { 
+                editorPlaying = false; 
+                attacks.clear(); 
+                editorTime = currentLevel.duration; 
+            }
         }
 
         glClearColor(0.04f, 0.02f, 0.08f, 1.0f);
@@ -633,10 +685,10 @@ int main() {
             glUniform4f(colorLoc, 1.0f, 0.4f, 1.0f, 1.0f);
             DrawDynamicLines(GenerateText("GRID DODGE", CenterX("GRID DODGE", 0.15f), 0.65f, 0.15f));
 
-            DrawButton(0.0f, 0.35f, 1.1f, 0.35f, "PLAY", 0.08f, 0.0f, 1.0f, 1.0f, Hover(0.0f, 0.35f, 1.1f, 0.35f));
-            DrawButton(0.0f, 0.00f, 1.1f, 0.35f, "SETTINGS", 0.08f, 0.5f, 0.3f, 1.0f, Hover(0.0f, 0.00f, 1.1f, 0.35f));
-            DrawButton(0.0f,-0.35f, 1.1f, 0.35f, "EDITOR", 0.08f, 0.0f, 0.8f, 0.5f, Hover(0.0f,-0.35f, 1.1f, 0.35f));
-            DrawButton(0.0f,-0.72f, 1.1f, 0.35f, "QUIT", 0.08f, 1.0f, 0.1f, 0.2f, Hover(0.0f,-0.72f, 1.1f, 0.35f));
+            DrawButton(0.0f, 0.40f, 1.1f, 0.22f, "PLAY", 0.08f, 0.0f, 1.0f, 1.0f, Hover(0.0f, 0.40f, 1.1f, 0.22f));
+            DrawButton(0.0f, 0.10f, 1.1f, 0.22f, "SETTINGS", 0.08f, 0.5f, 0.3f, 1.0f, Hover(0.0f, 0.10f, 1.1f, 0.22f));
+            DrawButton(0.0f, -0.20f, 1.1f, 0.22f, "EDITOR", 0.08f, 0.0f, 0.8f, 0.5f, Hover(0.0f, -0.20f, 1.1f, 0.22f));
+            DrawButton(0.0f, -0.50f, 1.1f, 0.22f, "QUIT", 0.08f, 1.0f, 0.1f, 0.2f, Hover(0.0f, -0.50f, 1.1f, 0.22f));
         }
 
         else if (currentState == SETTINGS) {
@@ -720,8 +772,25 @@ int main() {
         }
 
         else if (currentState == LEVEL_EDITOR) {
-            glUniform2f(vOffLoc, -0.5f, 0.0f);
-            glUniform2f(vSclLoc, 0.65f, 0.65f);
+            glUniform2f(vOffLoc, -0.45f, 0.1f); 
+            glUniform2f(vSclLoc, 0.55f, 0.55f);
+
+            std::vector<float> outerGridLines;
+            AddLine(outerGridLines, -1.4f, -1.4f,  1.4f, -1.4f, 0.0f, 0.0f, 1.0f);
+            AddLine(outerGridLines,  1.4f, -1.4f,  1.4f,  1.4f, 0.0f, 0.0f, 1.0f);
+            AddLine(outerGridLines,  1.4f,  1.4f, -1.4f,  1.4f, 0.0f, 0.0f, 1.0f);
+            AddLine(outerGridLines, -1.4f,  1.4f, -1.4f, -1.4f, 0.0f, 0.0f, 1.0f);
+            for (float x : gridCoords) {
+                AddLine(outerGridLines, x,  0.8f, x,  1.4f, 0.0f, 0.0f, 1.0f);
+                AddLine(outerGridLines, x, -0.8f, x, -1.4f, 0.0f, 0.0f, 1.0f);
+            }
+            for (float y : gridCoords) {
+                AddLine(outerGridLines, -0.8f, y, -1.4f, y, 0.0f, 0.0f, 1.0f);
+                AddLine(outerGridLines,  0.8f, y,  1.4f, y, 0.0f, 0.0f, 1.0f);
+            }
+            glLineWidth(1.5f);
+            glUniform4f(colorLoc, 0.4f, 0.4f, 0.4f, 0.3f); 
+            DrawDynamicLines(outerGridLines);
 
             glBindVertexArray(gridVAO);
             glUniform2f(offsetLoc,0.0f,0.0f); glUniform2f(scaleLoc,1.0f,1.0f);
@@ -731,69 +800,165 @@ int main() {
             float cx = gridCoords[editorCursorCol];
             float cy = gridCoords[editorCursorRow];
             float cursorPulse = 0.5f + 0.5f*sinf(currentFrame*4.0f);
+            
             glBindVertexArray(rectVAO);
             glUniform2f(offsetLoc, cx, cy); glUniform2f(scaleLoc,0.35f,0.35f);
             glUniform4f(colorLoc, 0.0f, 1.0f, cursorPulse, 0.9f);
             glDrawArrays(GL_LINE_LOOP,0,4);
 
-            if (editorPlaying) {
-                glBindVertexArray(quadVAO);
-                glUniform2f(offsetLoc,cubeOffsetX,cubeOffsetY); glUniform2f(scaleLoc,0.3f,0.3f);
-                glUniform4f(colorLoc,0.0f,1.0f,1.0f,1.0f);
-                glDrawArrays(GL_TRIANGLE_STRIP,0,4);
+            std::vector<Attack> previewAttacks;
 
-                for (const auto& atk : attacks) {
-                    glUniform2f(offsetLoc,atk.x,atk.y);
-                    glUniform2f(scaleLoc,atk.width,atk.height);
-                    float ar,ag,ab; GetAttackColor(atk.type,ar,ag,ab);
-                    glUniform4f(colorLoc,ar,ag,ab,0.8f);
-                    glDrawArrays(GL_TRIANGLE_STRIP,0,4);
+            if (!editorPlaying) {
+                LevelEvent tempEvent = { editorSelectedType, editorTime, editorCursorCol, editorCursorRow, editorSelectedEdge };
+                SpawnFromEvent(tempEvent, previewAttacks);
+            }
+
+            for (const auto& ev : currentLevel.events) {
+                float lifeTime = 0.0f;
+                if (ev.type == LASER) lifeTime = 1.6f;
+                else if (ev.type == LONG_LASER) lifeTime = 4.6f;
+                else if (ev.type == TILE_DMG) lifeTime = 2.3f;
+                else lifeTime = 3.0f; 
+
+                if (editorTime >= ev.triggerTime && editorTime <= (ev.triggerTime + lifeTime)) {
+                    std::vector<Attack> tmp;
+                    SpawnFromEvent(ev, tmp);
+                    if (!tmp.empty()) {
+                        tmp[0].timer = (editorTime - ev.triggerTime);
+                        
+                        if (tmp[0].type == NORMAL || tmp[0].type == BOOMERANG || tmp[0].type == MOVING_LASER) {
+                            float t = tmp[0].timer;
+                            if (tmp[0].type == BOOMERANG) {
+                                float dist = std::sqrt(tmp[0].dx*tmp[0].dx + tmp[0].dy*tmp[0].dy) * t;
+                                if (dist > 1.8f) {
+                                    float fullSpeedTime = 1.8f / std::sqrt(tmp[0].dx*tmp[0].dx + tmp[0].dy*tmp[0].dy);
+                                    float returnTime = t - fullSpeedTime;
+                                    tmp[0].x += tmp[0].dx * fullSpeedTime - tmp[0].dx * returnTime;
+                                    tmp[0].y += tmp[0].dy * fullSpeedTime - tmp[0].dy * returnTime;
+                                } else {
+                                    tmp[0].x += tmp[0].dx * t;
+                                    tmp[0].y += tmp[0].dy * t;
+                                }
+                            } else {
+                                tmp[0].x += tmp[0].dx * t;
+                                tmp[0].y += tmp[0].dy * t;
+                            }
+                        }
+                        
+                        if (tmp[0].type == LASER && tmp[0].timer > 1.0f && tmp[0].timer <= 1.5f) tmp[0].active = true;
+                        if (tmp[0].type == LASER && tmp[0].timer > 1.5f) tmp[0].active = false;
+                        if (tmp[0].type == LONG_LASER && tmp[0].timer > 1.0f && tmp[0].timer <= 4.5f) tmp[0].active = true;
+                        if (tmp[0].type == LONG_LASER && tmp[0].timer > 4.5f) tmp[0].active = false;
+                        if (tmp[0].type == TILE_DMG && tmp[0].timer > 1.2f && tmp[0].timer <= 2.2f) tmp[0].active = true;
+                        if (tmp[0].type == TILE_DMG && tmp[0].timer > 2.2f) tmp[0].active = false;
+
+                        previewAttacks.push_back(tmp[0]);
+                    }
                 }
             }
 
-            glBindVertexArray(rectVAO);
-            for (const auto& ev : currentLevel.events) {
-                float ex = gridCoords[std::min(ev.gridCol, gridCells-1)];
-                float ey = gridCoords[std::min(ev.gridRow, gridCells-1)];
-                float er,eg,eb; GetAttackColor(ev.type,er,eg,eb);
-                float alpha = (std::abs(ev.triggerTime - editorTime) < 1.0f) ? 1.0f : 0.35f;
-                glUniform2f(offsetLoc,ex,ey); glUniform2f(scaleLoc,0.18f,0.18f);
-                glUniform4f(colorLoc,er,eg,eb,alpha);
-                glDrawArrays(GL_LINE_LOOP,0,4);
+            glBindVertexArray(quadVAO);
+            for (const auto& atk : previewAttacks) {
+                glUniform2f(offsetLoc, atk.x, atk.y);
+                if (atk.type == LASER || atk.type == LONG_LASER) {
+                    if (atk.width > atk.height) glUniform2f(scaleLoc, atk.width, atk.active ? atk.height : 0.03f);
+                    else                         glUniform2f(scaleLoc, atk.active ? atk.width : 0.03f, atk.height);
+                } else if (atk.type == TILE_DMG) {
+                    glUniform2f(scaleLoc, atk.active ? atk.width : atk.width * 0.7f, atk.active ? atk.height : atk.height * 0.7f);
+                } else {
+                    glUniform2f(scaleLoc, atk.width, atk.height);
+                }
+                glUniform4f(colorLoc, atk.r, atk.g, atk.b, atk.active ? 0.7f : 0.3f);
+                glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
             }
 
             glUniform2f(vOffLoc, 0.0f, 0.0f);
             glUniform2f(vSclLoc, 1.0f, 1.0f);
             glUniform2f(offsetLoc,0.0f,0.0f); glUniform2f(scaleLoc,1.0f,1.0f);
 
-            float uiX = 0.9f;
+            float uiX = 1.10f;
             glLineWidth(4.0f); glUniform4f(colorLoc,0.0f,0.9f,0.5f,1.0f);
             DrawDynamicLines(GenerateText("EDITOR", CenterX("EDITOR", 0.09f, uiX), 0.80f, 0.09f));
 
-            glLineWidth(2.0f); glUniform4f(colorLoc,0.6f,1.0f,0.6f,0.9f);
-            std::string timeStr = "TIME: " + std::to_string((int)editorTime);
-            DrawDynamicLines(GenerateText(timeStr, CenterX(timeStr, 0.055f, uiX), 0.60f, 0.055f));
-
-            std::string evStr = "EVENTS: " + std::to_string(currentLevel.events.size());
-            DrawDynamicLines(GenerateText(evStr, CenterX(evStr, 0.055f, uiX), 0.48f, 0.055f));
-
             glUniform4f(colorLoc,0.8f,0.8f,0.2f,1.0f);
-            std::string typeStr = "TYPE: "; typeStr += GetAttackName(editorSelectedType);
-            DrawDynamicLines(GenerateText(typeStr, CenterX(typeStr, 0.055f, uiX), 0.36f, 0.055f));
+            std::string typeStr = "TYPE: " + std::string(GetAttackName(editorSelectedType));
+            DrawDynamicLines(GenerateText(typeStr, CenterX(typeStr, 0.055f, uiX), 0.60f, 0.055f));
 
             glUniform4f(colorLoc, editorPlaying?0.2f:0.5f, editorPlaying?1.0f:0.5f, editorPlaying?0.2f:0.5f, 1.0f);
             const char* statusStr = editorPlaying ? "PLAYING" : "PAUSED";
-            DrawDynamicLines(GenerateText(statusStr, CenterX(statusStr, 0.055f, uiX), 0.24f, 0.055f));
+            DrawDynamicLines(GenerateText(statusStr, CenterX(statusStr, 0.055f, uiX), 0.45f, 0.055f));
+
+            glUniform4f(colorLoc, 1.0f, 1.0f, 0.0f, 1.0f);
+            std::string edgeStr = "FROM: ";
+            if      (editorSelectedEdge == 0) edgeStr += "TOP";
+            else if (editorSelectedEdge == 1) edgeStr += "BOTTOM";
+            else if (editorSelectedEdge == 2) edgeStr += "LEFT";
+            else                              edgeStr += "RIGHT";
+            DrawDynamicLines(GenerateText(edgeStr, CenterX(edgeStr, 0.055f, uiX), 0.32f, 0.055f));
+
+            std::vector<float> uiArrow;
+            float ay = 0.20f; float arrowSize = 0.06f;
+            if (editorSelectedEdge == 0) { 
+                AddLine(uiArrow, 0.0f, arrowSize, 0.0f, -arrowSize, uiX, ay, 1.0f);
+                AddLine(uiArrow, 0.0f, -arrowSize, -arrowSize * 0.5f, -arrowSize * 0.2f, uiX, ay, 1.0f);
+                AddLine(uiArrow, 0.0f, -arrowSize,  arrowSize * 0.5f, -arrowSize * 0.2f, uiX, ay, 1.0f);
+            } else if (editorSelectedEdge == 1) { 
+                AddLine(uiArrow, 0.0f, -arrowSize, 0.0f, arrowSize, uiX, ay, 1.0f);
+                AddLine(uiArrow, 0.0f, arrowSize, -arrowSize * 0.5f, arrowSize * 0.2f, uiX, ay, 1.0f);
+                AddLine(uiArrow, 0.0f, arrowSize,  arrowSize * 0.5f, arrowSize * 0.2f, uiX, ay, 1.0f);
+            } else if (editorSelectedEdge == 2) { 
+                AddLine(uiArrow, -arrowSize, 0.0f, arrowSize, 0.0f, uiX, ay, 1.0f);
+                AddLine(uiArrow, arrowSize, 0.0f, arrowSize * 0.2f, -arrowSize * 0.5f, uiX, ay, 1.0f);
+                AddLine(uiArrow, arrowSize, 0.0f, arrowSize * 0.2f,  arrowSize * 0.5f, uiX, ay, 1.0f);
+            } else { 
+                AddLine(uiArrow, arrowSize, 0.0f, -arrowSize, 0.0f, uiX, ay, 1.0f);
+                AddLine(uiArrow, -arrowSize, 0.0f, -arrowSize * 0.2f, -arrowSize * 0.5f, uiX, ay, 1.0f);
+                AddLine(uiArrow, -arrowSize, 0.0f, -arrowSize * 0.2f,  arrowSize * 0.5f, uiX, ay, 1.0f);
+            }
+            glLineWidth(4.0f); DrawDynamicLines(uiArrow);
 
             glLineWidth(1.5f); glUniform4f(colorLoc,0.3f,0.5f,0.3f,0.7f);
-            DrawDynamicLines(GenerateText("SPACE  ADD",   CenterX("SPACE  ADD", 0.045f, uiX), -0.05f, 0.045f));
-            DrawDynamicLines(GenerateText("1-6    TYPE",  CenterX("1-6    TYPE",0.045f, uiX), -0.17f, 0.045f));
-            DrawDynamicLines(GenerateText(",/.    TIME",  CenterX(",/.    TIME",0.045f, uiX), -0.29f, 0.045f));
-            DrawDynamicLines(GenerateText("P      PREVIEW",CenterX("P      PREVIEW",0.045f, uiX), -0.41f, 0.045f));
-            DrawDynamicLines(GenerateText("DEL    CLEAR",  CenterX("DEL    CLEAR",0.045f, uiX), -0.53f, 0.045f));
-            DrawDynamicLines(GenerateText("E      EXPORT", CenterX("E      EXPORT",0.045f, uiX), -0.65f, 0.045f));
+            DrawDynamicLines(GenerateText("SPACE  ADD",   CenterX("SPACE  ADD", 0.045f, uiX),  0.04f, 0.045f));
+            DrawDynamicLines(GenerateText("1-6    TYPE",  CenterX("1-6    TYPE",0.045f, uiX), -0.04f, 0.045f));
+            DrawDynamicLines(GenerateText("R      ROTATE",CenterX("R      ROTATE",0.045f, uiX), -0.12f, 0.045f));
+            DrawDynamicLines(GenerateText("P      PREVIEW",CenterX("P      PREVIEW",0.045f, uiX), -0.20f, 0.045f));
+            DrawDynamicLines(GenerateText("DEL    CLEAR",  CenterX("DEL    CLEAR",0.045f, uiX),  -0.28f, 0.045f));
+            DrawDynamicLines(GenerateText("E      EXPORT", CenterX("E      EXPORT",0.045f, uiX), -0.36f, 0.045f));
 
-            DrawButton(uiX, -0.80f, 0.8f, 0.25f, "MENU", 0.07f, 0.0f, 0.8f, 0.5f, Hover(uiX, -0.80f, 0.8f, 0.25f));
+            std::string durStr = "MAX: " + std::to_string((int)currentLevel.duration) + "s";
+            DrawDynamicLines(GenerateText(durStr, CenterX(durStr, 0.05f, uiX), -0.46f, 0.05f));
+            DrawButton(uiX - 0.22f, -0.58f, 0.15f, 0.15f, "-", 0.07f, 0.8f, 0.2f, 0.2f, Hover(uiX - 0.22f, -0.58f, 0.15f, 0.15f));
+            DrawButton(uiX + 0.22f, -0.58f, 0.15f, 0.15f, "+", 0.07f, 0.2f, 0.8f, 0.2f, Hover(uiX + 0.22f, -0.58f, 0.15f, 0.15f));
+            DrawButton(uiX, -0.80f, 0.5f, 0.2f, "MENU", 0.07f, 0.0f, 0.8f, 0.5f, Hover(uiX, -0.80f, 0.5f, 0.2f));
+
+            float TL_START = -1.3f;
+            float TL_END = 0.3f;
+            float TL_Y = -0.85f;
+
+            glLineWidth(2.0f); glUniform4f(colorLoc,1.0f,1.0f,1.0f,1.0f);
+            char tBuf[32]; snprintf(tBuf, sizeof(tBuf), "TIME: %.1f s", editorTime);
+            DrawDynamicLines(GenerateText(tBuf, TL_START, TL_Y + 0.15f, 0.06f));
+
+            glLineWidth(3.0f); glUniform4f(colorLoc,0.4f,0.4f,0.4f,1.0f);
+            std::vector<float> tlLine;
+            AddLine(tlLine, 0, 0, 1, 0, TL_START, TL_Y, TL_END - TL_START);
+            DrawDynamicLines(tlLine);
+
+            glLineWidth(2.0f);
+            for (const auto& ev : currentLevel.events) {
+                float tx = TL_START + (ev.triggerTime / currentLevel.duration) * (TL_END - TL_START);
+                float er,eg,eb; GetAttackColor(ev.type,er,eg,eb);
+                glUniform4f(colorLoc, er, eg, eb, 0.8f);
+                std::vector<float> singleTick;
+                AddLine(singleTick, 0, -0.5f, 0, 0.5f, tx, TL_Y, 0.08f);
+                DrawDynamicLines(singleTick);
+            }
+
+            float sliderX = TL_START + (editorTime / currentLevel.duration) * (TL_END - TL_START);
+            glLineWidth(4.0f); glUniform4f(colorLoc,0.0f,1.0f,1.0f,1.0f);
+            std::vector<float> sliderLine;
+            AddLine(sliderLine, 0, -1.0f, 0, 1.0f, sliderX, TL_Y, 0.12f);
+            DrawDynamicLines(sliderLine);
         }
 
         glfwSwapBuffers(window);
