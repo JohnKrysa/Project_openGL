@@ -1,3 +1,8 @@
+/**
+ * @file common.h
+ * @brief Shared declarations, structures and constants used across the project.
+ */
+
 #pragma once
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -82,7 +87,6 @@ extern unsigned int textVAO, textVBO;
 extern std::string vertexShaderSource;
 extern std::string fragmentShaderSource;
 
-// Herní logika
 void SetGridSize(int size);
 void UpdateGridVAO();
 void ResetGame(GLFWwindow* window);
@@ -92,7 +96,6 @@ void SpawnFromEvent(const LevelEvent& ev, std::vector<Attack>& targetContainer);
 bool checkCollision(float ax, float ay, float aw, float ah);
 const char* GetAttackName(AttackType t);
 
-// Utility / Vykreslování textu a shaderů
 unsigned int CreateShader(const std::string& vs, const std::string& fs);
 void AddLine(std::vector<float>& v, float x1, float y1, float x2, float y2, float ox, float oy, float s);
 float TextWidth(const std::string& str, float scale);
@@ -100,7 +103,6 @@ float CenterX(const std::string& str, float scale, float centerX = 0.0f);
 std::vector<float> GenerateText(const std::string& str, float startX, float startY, float scale);
 void DrawDynamicLines(const std::vector<float>& pts);
 
-// GLFW Callbacky
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods);
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);

@@ -1,3 +1,8 @@
+/**
+ * @file utils.cpp
+ * @brief Utility rendering and text helper functions.
+ */
+
 #include "common.h"
 
 std::string vertexShaderSource = R"(#version 330 core

@@ -1,3 +1,8 @@
+/**
+ * @file globals.cpp
+ * @brief Definitions of globally shared variables.
+ */
+
 #include "common.h"
 
 GameState currentState = MENU;

@@ -1,5 +1,14 @@
+/**
+ * @file game.cpp
+ * @brief Core gameplay logic, spawning, collisions and input handling.
+ */
+
 #include "common.h"
 
+/**
+ * @brief Recalculates grid coordinates and spacing.
+ * @param size Number of grid cells per axis.
+ */
 void SetGridSize(int size) {
     gridCells = size;
     gridCoords.clear();
@@ -28,6 +37,10 @@ void UpdateGridVAO() {
     glEnableVertexAttribArray(0);
 }
 
+/**
+ * @brief Resets the game state and player progress.
+ * @param window Active GLFW window instance.
+ */
 void ResetGame(GLFWwindow* window) {
     cubeOffsetX   = 0.0f; cubeOffsetY   = 0.0f;
     targetOffsetX = 0.0f; targetOffsetY = 0.0f;
@@ -53,6 +66,11 @@ void GetAttackColor(AttackType t, float& r, float& g, float& b) {
     }
 }
 
+/**
+ * @brief Spawns a random attack around the arena.
+ * @param playerX Current player X position.
+ * @param playerY Current player Y position.
+ */
 void SpawnAttack(float playerX, float playerY) {
     int   attackType = rand() % 16;
     float speed = 1.2f * globalSpeedMultiplier;
@@ -130,6 +148,10 @@ void SpawnFromEvent(const LevelEvent& ev, std::vector<Attack>& targetContainer) 
     targetContainer.push_back({ ev.type, sx, sy, dx, dy, r, g, b, 0.0f, 0.0f, false, active, w, h });
 }
 
+/**
+ * @brief Checks collision between the player and an attack hitbox.
+ * @return True if the objects overlap.
+ */
 bool checkCollision(float ax, float ay, float aw, float ah) {
     return std::abs(cubeOffsetX - ax) < (0.15f + aw / 2.0f) &&
            std::abs(cubeOffsetY - ay) < (0.15f + ah / 2.0f);
@@ -184,6 +206,9 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
     }
 }
 
+/**
+ * @brief Toggles fullscreen mode for the game window.
+ */
 void ToggleFullscreen(GLFWwindow* window) {
     if (!isFullscreen) {
         glfwGetWindowPos(window, &savedX, &savedY);
@@ -197,6 +222,9 @@ void ToggleFullscreen(GLFWwindow* window) {
     isFullscreen = !isFullscreen;
 }
 
+/**
+ * @brief Handles keyboard input in menus and gameplay.
+ */
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     if (action == GLFW_PRESS || action == GLFW_REPEAT) {
         if (currentState == GAME) {

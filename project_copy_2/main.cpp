@@ -1,3 +1,8 @@
+/**
+ * @file main.cpp
+ * @brief Entry point and rendering loop for Grid Dodge.
+ */
+
 #include "common.h"
 
 int main() {
