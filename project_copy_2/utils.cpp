@@ -1,7 +1,4 @@
-/**
- * @file utils.cpp
- * @brief Utility rendering and text helper functions.
- */
+
 
 #include "common.h"
 
@@ -94,6 +91,33 @@ std::vector<float> GenerateText(const std::string& str, float startX, float star
         case 'X': AddLine(pts,0,0,1,2,x,startY,scale); AddLine(pts,1,0,0,2,x,startY,scale); break;
         case 'Y': AddLine(pts,0,2,0.5f,1,x,startY,scale); AddLine(pts,1,2,0.5f,1,x,startY,scale); AddLine(pts,0.5f,1,0.5f,0,x,startY,scale); break;
         case 'Z': AddLine(pts,0,2,1,2,x,startY,scale); AddLine(pts,1,2,0,0,x,startY,scale); AddLine(pts,0,0,1,0,x,startY,scale); break;
+        
+        case 'a': AddLine(pts,0,0,0,1.5f,x,startY,scale); AddLine(pts,0,1.5f,1,1.5f,x,startY,scale); AddLine(pts,1,1.5f,1,0,x,startY,scale); AddLine(pts,0,0.75f,1,0.75f,x,startY,scale); break;
+        case 'b': AddLine(pts,0,0,0,2,x,startY,scale); AddLine(pts,0,1.5f,0.8f,1.5f,x,startY,scale); AddLine(pts,0.8f,1.5f,1,0.75f,x,startY,scale); AddLine(pts,1,0.75f,0.8f,0,x,startY,scale); AddLine(pts,0.8f,0,0,0,x,startY,scale); break;
+        case 'c': AddLine(pts,1,1.5f,0,1.5f,x,startY,scale); AddLine(pts,0,1.5f,0,0,x,startY,scale); AddLine(pts,0,0,1,0,x,startY,scale); break;
+        case 'd': AddLine(pts,1,0,1,2,x,startY,scale); AddLine(pts,1,1.5f,0.2f,1.5f,x,startY,scale); AddLine(pts,0.2f,1.5f,0,0.75f,x,startY,scale); AddLine(pts,0,0.75f,0.2f,0,x,startY,scale); AddLine(pts,0.2f,0,1,0,x,startY,scale); break;
+        case 'e': AddLine(pts,0,0.75f,1,0.75f,x,startY,scale); AddLine(pts,0,0.75f,0,1.5f,x,startY,scale); AddLine(pts,0,1.5f,1,1.5f,x,startY,scale); AddLine(pts,1,1.5f,1,1.1f,x,startY,scale); AddLine(pts,0,0.75f,0,0,x,startY,scale); AddLine(pts,0,0,1,0,x,startY,scale); break;
+        case 'f': AddLine(pts,1,1.5f,0,1.5f,x,startY,scale); AddLine(pts,0,1.5f,0,0,x,startY,scale); AddLine(pts,0,0.75f,0.7f,0.75f,x,startY,scale); break;
+        case 'g': AddLine(pts,1,1.5f,0,1.5f,x,startY,scale); AddLine(pts,0,1.5f,0,-0.5f,x,startY,scale); AddLine(pts,0,-0.5f,1,-0.5f,x,startY,scale); AddLine(pts,1,-0.5f,1,0.75f,x,startY,scale); AddLine(pts,0.5f,0.75f,1,0.75f,x,startY,scale); AddLine(pts,1,1.5f,1,0.75f,x,startY,scale); break;
+        case 'h': AddLine(pts,0,0,0,2,x,startY,scale); AddLine(pts,0,0.75f,1,1.5f,x,startY,scale); AddLine(pts,1,1.5f,1,0,x,startY,scale); break;
+        case 'i': AddLine(pts,0.5f,0,0.5f,1.5f,x,startY,scale); AddLine(pts,0.3f,0,0.7f,0,x,startY,scale); AddLine(pts,0.5f,1.8f,0.5f,2.0f,x,startY,scale); break;
+        case 'j': AddLine(pts,0.8f,1.5f,0.8f,-0.2f,x,startY,scale); AddLine(pts,0.8f,-0.2f,0.4f,-0.5f,x,startY,scale); AddLine(pts,0.4f,-0.5f,0,-0.2f,x,startY,scale); AddLine(pts,0.8f,1.8f,0.8f,2.0f,x,startY,scale); break;
+        case 'k': AddLine(pts,0,0,0,2,x,startY,scale); AddLine(pts,0,0.75f,1,1.5f,x,startY,scale); AddLine(pts,0,0.75f,1,0,x,startY,scale); break;
+        case 'l': AddLine(pts,0.5f,2,0.5f,0,x,startY,scale); AddLine(pts,0.5f,0,0.9f,0,x,startY,scale); break;
+        case 'm': AddLine(pts,0,0,0,1.5f,x,startY,scale); AddLine(pts,0,1.5f,0.5f,0.75f,x,startY,scale); AddLine(pts,0.5f,0.75f,1,1.5f,x,startY,scale); AddLine(pts,1,1.5f,1,0,x,startY,scale); break;
+        case 'n': AddLine(pts,0,0,0,1.5f,x,startY,scale); AddLine(pts,0,1.5f,1,0,x,startY,scale); AddLine(pts,1,0,1,1.5f,x,startY,scale); break;
+        case 'o': AddLine(pts,0,0,0,1.5f,x,startY,scale); AddLine(pts,0,1.5f,1,1.5f,x,startY,scale); AddLine(pts,1,1.5f,1,0,x,startY,scale); AddLine(pts,1,0,0,0,x,startY,scale); break;
+        case 'p': AddLine(pts,0,-0.5f,0,1.5f,x,startY,scale); AddLine(pts,0,1.5f,1,1.5f,x,startY,scale); AddLine(pts,1,1.5f,1,0.75f,x,startY,scale); AddLine(pts,1,0.75f,0,0.75f,x,startY,scale); break;
+        case 'q': AddLine(pts,1,-0.5f,1,1.5f,x,startY,scale); AddLine(pts,0,1.5f,1,1.5f,x,startY,scale); AddLine(pts,0,1.5f,0,0.75f,x,startY,scale); AddLine(pts,0,0.75f,1,0.75f,x,startY,scale); break;
+        case 'r': AddLine(pts,0,0,0,1.5f,x,startY,scale); AddLine(pts,0,1.5f,1,1.5f,x,startY,scale); AddLine(pts,1,1.5f,1,0.75f,x,startY,scale); AddLine(pts,1,0.75f,0,0.75f,x,startY,scale); AddLine(pts,0,0.75f,1,0,x,startY,scale); break;
+        case 's': AddLine(pts,1,1.5f,0,1.5f,x,startY,scale); AddLine(pts,0,1.5f,0,0.75f,x,startY,scale); AddLine(pts,0,0.75f,1,0.75f,x,startY,scale); AddLine(pts,1,0.75f,1,0,x,startY,scale); AddLine(pts,1,0,0,0,x,startY,scale); break;
+        case 't': AddLine(pts,0,1.5f,1,1.5f,x,startY,scale); AddLine(pts,0.5f,1.5f,0.5f,0,x,startY,scale); break;
+        case 'u': AddLine(pts,0,1.5f,0,0,x,startY,scale); AddLine(pts,0,0,1,0,x,startY,scale); AddLine(pts,1,0,1,1.5f,x,startY,scale); break;
+        case 'v': AddLine(pts,0,1.5f,0.5f,0,x,startY,scale); AddLine(pts,0.5f,0,1,1.5f,x,startY,scale); break;
+        case 'w': AddLine(pts,0,1.5f,0.2f,0,x,startY,scale); AddLine(pts,0.2f,0,0.5f,0.8f,x,startY,scale); AddLine(pts,0.5f,0.8f,0.8f,0,x,startY,scale); AddLine(pts,0.8f,0,1,1.5f,x,startY,scale); break;
+        case 'x': AddLine(pts,0,0,1,1.5f,x,startY,scale); AddLine(pts,1,0,0,1.5f,x,startY,scale); break;
+        case 'y': AddLine(pts,0,1.5f,0.5f,0.75f,x,startY,scale); AddLine(pts,1,1.5f,0.5f,0.75f,x,startY,scale); AddLine(pts,0.5f,0.75f,0.5f,-0.5f,x,startY,scale); AddLine(pts,0.5f,-0.5f,0,-0.7f,x,startY,scale); break;
+        case 'z': AddLine(pts,0,1.5f,1,1.5f,x,startY,scale); AddLine(pts,1,1.5f,0,0,x,startY,scale); AddLine(pts,0,0,1,0,x,startY,scale); break;
         case '0': AddLine(pts,0,0,0,2,x,startY,scale); AddLine(pts,0,2,1,2,x,startY,scale); AddLine(pts,1,2,1,0,x,startY,scale); AddLine(pts,1,0,0,0,x,startY,scale); AddLine(pts,0,0,1,2,x,startY,scale); break;
         case '1': AddLine(pts,0.2f,1.5f,0.5f,2,x,startY,scale); AddLine(pts,0.5f,2,0.5f,0,x,startY,scale); AddLine(pts,0.2f,0,0.8f,0,x,startY,scale); break;
         case '2': AddLine(pts,0,2,1,2,x,startY,scale); AddLine(pts,1,2,1,1,x,startY,scale); AddLine(pts,1,1,0,0,x,startY,scale); AddLine(pts,0,0,1,0,x,startY,scale); break;
@@ -110,6 +134,7 @@ std::vector<float> GenerateText(const std::string& str, float startX, float star
         case '/': AddLine(pts,0.2f,0,0.8f,2,x,startY,scale); break;
         case ',': AddLine(pts,0.5f,0.3f,0.3f,-0.2f,x,startY,scale); break;
         case '-': AddLine(pts,0.2f,1.0f,0.8f,1.0f,x,startY,scale); break;
+        case '\\': AddLine(pts,0.8f,2.0f,0.2f,0.0f,x,startY,scale); break;
         case '+': AddLine(pts,0.5f,0.2f,0.5f,1.8f,x,startY,scale); AddLine(pts,0.1f,1.0f,0.9f,1.0f,x,startY,scale); break;
         default: break;
         }

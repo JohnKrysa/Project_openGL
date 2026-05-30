@@ -1,14 +1,144 @@
-/**
- * @file game.cpp
- * @brief Core gameplay logic, spawning, collisions and input handling.
- */
+
 
 #include "common.h"
+#include "audio.h"
 
-/**
- * @brief Recalculates grid coordinates and spacing.
- * @param size Number of grid cells per axis.
- */
+namespace fs = std::filesystem;
+
+void ExportLevel() {
+    if (!fs::exists("levels")) {
+        fs::create_directory("levels");
+    }
+    
+    std::string safeName = levelNameBuffer;
+    for (char& c : safeName) {
+        if (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|')
+            c = '_';
+    }
+    if (safeName.empty()) safeName = "level_" + std::to_string((unsigned)time(NULL));
+    
+    std::string filename = "levels/" + safeName + ".txt";
+    std::ofstream out(filename);
+    
+    if (out.is_open()) {
+        out << "NAME " << safeName << "\n";
+        out << "DURATION " << currentLevel.duration << "\n";
+        
+        if (!editorAudioPath.empty()) {
+            out << "AUDIO " << editorAudioPath << "\n";
+        }
+        for (const auto& ev : currentLevel.events) {
+            out << (int)ev.type << " " << ev.triggerTime << " " << ev.gridCol << " " << ev.gridRow << " " << ev.edge << "\n";
+        }
+        out.close();
+        std::cout << "Level uspesne exportovan do: " << filename << "\n";
+        exportNotifMsg = "EXPORTED: " + std::filesystem::path(filename).filename().string();
+        exportNotifTimer = 3.0f;
+    } else {
+        std::cerr << "Chyba: Nepodarilo se zapsat soubor " << filename << "\n";
+        exportNotifMsg = "EXPORT FAILED";
+        exportNotifTimer = 3.0f;
+    }
+}
+
+void SaveCustomLevelsIndex() {
+    if (!fs::exists("levels")) fs::create_directory("levels");
+    std::ofstream out("levels/index.txt");
+    if (!out.is_open()) return;
+    for (const auto& path : customLevelFiles) {
+        out << path << "\n";
+    }
+}
+
+void LoadCustomLevelsList() {
+    customLevelFiles.clear();
+
+    if (fs::exists("levels")) {
+        for (const auto& entry : fs::directory_iterator("levels")) {
+            if (entry.path().extension() == ".txt" && entry.path().filename() != "index.txt") {
+                customLevelFiles.push_back(entry.path().string());
+            }
+        }
+    }
+
+    std::ifstream idx("levels/index.txt");
+    if (!idx.is_open()) return;
+    std::string line;
+    while (std::getline(idx, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty()) continue;
+        if (fs::exists(line) &&
+            std::find(customLevelFiles.begin(), customLevelFiles.end(), line) == customLevelFiles.end()) {
+            customLevelFiles.push_back(line);
+        }
+    }
+}
+
+bool ImportLevel(const std::string& path) {
+    std::string cleanPath = path;
+    if (cleanPath.size() >= 2 && cleanPath.front() == '"' && cleanPath.back() == '"') {
+        cleanPath = cleanPath.substr(1, cleanPath.size() - 2);
+    }
+
+    std::cout << "[IMPORT] Oteviram soubor: " << cleanPath << "\n";
+    std::ifstream in(cleanPath);
+    if (!in.is_open()) {
+        std::cout << "[IMPORT] CHYBA: soubor nelze otevrit!\n";
+        return false;
+    }
+    std::cout << "[IMPORT] Soubor otevren OK\n";
+    
+    currentLevel.events.clear();
+    currentLevel.name.clear();
+    currentLevel.audioPath.clear(); 
+
+    std::string line;
+    while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty()) continue;
+
+        std::istringstream ss(line);
+        std::string token;
+        if (!(ss >> token)) continue;
+
+        if (token == "NAME") {
+            std::string name;
+            std::getline(ss, name);
+            if (!name.empty() && name[0] == ' ') name = name.substr(1);
+            currentLevel.name = name;
+        } else if (token == "DURATION") {
+            ss >> currentLevel.duration;
+        } else if (token == "AUDIO") {
+            
+            std::string audioPath;
+            std::getline(ss, audioPath);
+            if (!audioPath.empty() && audioPath[0] == ' ') audioPath = audioPath.substr(1);
+            currentLevel.audioPath = audioPath;
+            std::cout << "[IMPORT] Audio: " << audioPath << "\n";
+        } else {
+            try {
+                int type = std::stoi(token);
+                float tTime; int col, row, edge;
+                if (ss >> tTime >> col >> row >> edge) {
+                    currentLevel.events.push_back({ (AttackType)type, tTime, col, row, edge });
+                    std::cout << "[IMPORT] Event: type=" << type << " t=" << tTime << " col=" << col << " row=" << row << " edge=" << edge << "\n";
+                } else {
+                    std::cout << "[IMPORT] Radek nelze parsovat jako event: " << line << "\n";
+                }
+            } catch (...) {
+                std::cout << "[IMPORT] Neznamy token: " << token << "\n";
+            }
+        }
+    }
+    in.close();
+    std::cout << "[IMPORT] Celkem eventu: " << currentLevel.events.size() << ", name='" << currentLevel.name << "', duration=" << currentLevel.duration << "\n";
+    
+    std::sort(currentLevel.events.begin(), currentLevel.events.end(),
+        [](const LevelEvent& a, const LevelEvent& b){ return a.triggerTime < b.triggerTime; });
+        
+    return true;
+}
+
 void SetGridSize(int size) {
     gridCells = size;
     gridCoords.clear();
@@ -37,10 +167,6 @@ void UpdateGridVAO() {
     glEnableVertexAttribArray(0);
 }
 
-/**
- * @brief Resets the game state and player progress.
- * @param window Active GLFW window instance.
- */
 void ResetGame(GLFWwindow* window) {
     cubeOffsetX   = 0.0f; cubeOffsetY   = 0.0f;
     targetOffsetX = 0.0f; targetOffsetY = 0.0f;
@@ -62,19 +188,15 @@ void GetAttackColor(AttackType t, float& r, float& g, float& b) {
         case LONG_LASER:  r=1.0f; g=0.8f; b=0.0f; break;
         case TILE_DMG:    r=1.0f; g=0.2f; b=0.2f; break;
         case MOVING_LASER:r=0.2f; g=1.0f; b=0.2f; break;
+        case FAST_NORMAL: r=1.0f; g=0.5f; b=0.0f; break;
+        case WIDE_NORMAL: r=0.8f; g=0.2f; b=1.0f; break;
         default:          r=1.0f; g=1.0f; b=1.0f; break;
     }
 }
 
-/**
- * @brief Spawns a random attack around the arena.
- * @param playerX Current player X position.
- * @param playerY Current player Y position.
- */
 void SpawnAttack(float playerX, float playerY) {
     int   attackType = rand() % 16;
     float speed = 1.2f * globalSpeedMultiplier;
-    float r = 1.0f, g = 0.1f, b = 0.6f;
 
     int   edge    = rand() % 4;
     float spawnX  = 0.0f, spawnY = 0.0f, dx = 0.0f, dy = 0.0f;
@@ -86,30 +208,32 @@ void SpawnAttack(float playerX, float playerY) {
     else                { spawnX =  1.4f; spawnY = randPos; dx = -speed; }
 
     bool isHorizontal = (edge == 0 || edge == 1);
+    float sz = gridStep;
+    float tL = 2.8f;
 
-    if (attackType < 4) {
-        attacks.push_back({ NORMAL,      spawnX, spawnY, dx,        dy,        r,    g,    b,    0,0,false,true, 0.3f,0.3f });
-    } else if (attackType < 6) {
-        if (isHorizontal) attacks.push_back({ LASER, 0.0f, gridCoords[rand()%gridCells], 0,0, 0,1,1, 0,0,false,false,2.8f,0.15f });
-        else              attacks.push_back({ LASER, gridCoords[rand()%gridCells], 0.0f, 0,0, 0,1,1, 0,0,false,false,0.15f,2.8f });
-    } else if (attackType < 8) {
-        attacks.push_back({ BOOMERANG,   spawnX, spawnY, dx*1.2f,   dy*1.2f,   1.0f,0.6f,0.1f,0,0,false,true,0.3f,0.3f });
-    } else if (attackType < 10) {
-        if (isHorizontal) attacks.push_back({ LONG_LASER, 0.0f, gridCoords[rand()%gridCells], 0,0, 1,0.8f,0, 0,0,false,false,2.8f,0.15f });
-        else              attacks.push_back({ LONG_LASER, gridCoords[rand()%gridCells], 0.0f, 0,0, 1,0.8f,0, 0,0,false,false,0.15f,2.8f });
-    } else if (attackType < 12) {
+    if (attackType < 3) {
+        attacks.push_back({ NORMAL, spawnX, spawnY, dx, dy, 1.0f, 0.1f, 0.6f, 0,0,false,true, sz, sz });
+    } else if (attackType < 5) {
+        if (isHorizontal) attacks.push_back({ LASER, 0.0f, gridCoords[rand()%gridCells], 0,0, 0,1,1, 0,0,false,false, tL, sz });
+        else              attacks.push_back({ LASER, gridCoords[rand()%gridCells], 0.0f, 0,0, 0,1,1, 0,0,false,false, sz, tL });
+    } else if (attackType < 7) {
+        attacks.push_back({ BOOMERANG, spawnX, spawnY, dx*1.2f, dy*1.2f, 1.0f,0.6f,0.1f, 0,0,false,true, sz, sz });
+    } else if (attackType < 9) {
+        if (isHorizontal) attacks.push_back({ LONG_LASER, 0.0f, gridCoords[rand()%gridCells], 0,0, 1,0.8f,0, 0,0,false,false, tL, sz });
+        else              attacks.push_back({ LONG_LASER, gridCoords[rand()%gridCells], 0.0f, 0,0, 1,0.8f,0, 0,0,false,false, sz, tL });
+    } else if (attackType < 11) {
         float rx = gridCoords[rand()%gridCells];
         float ry = gridCoords[rand()%gridCells];
-        float sz = (rand()%2==0) ? 0.8f : 0.4f;
-        attacks.push_back({ TILE_DMG,    rx, ry, 0,0, 1,0.2f,0.2f, 0,0,false,false,sz,sz });
-    } else if (attackType < 14) {
-        if (isHorizontal) attacks.push_back({ MOVING_LASER, 0.0f, spawnY, 0, dy*0.25f, 0.2f,1,0.2f, 0,0,false,true,2.8f,0.15f });
-        else              attacks.push_back({ MOVING_LASER, spawnX, 0.0f, dx*0.25f, 0, 0.2f,1,0.2f, 0,0,false,true,0.15f,2.8f });
+        attacks.push_back({ TILE_DMG, rx, ry, 0,0, 1,0.2f,0.2f, 0,0,false,false, sz, sz });
+    } else if (attackType < 13) {
+        if (isHorizontal) attacks.push_back({ MOVING_LASER, 0.0f, spawnY, 0, dy*0.25f, 0.2f,1,0.2f, 0,0,false,true, tL, sz });
+        else              attacks.push_back({ MOVING_LASER, spawnX, 0.0f, dx*0.25f, 0, 0.2f,1,0.2f, sz, tL });
+    } else if (attackType < 15) {
+        attacks.push_back({ FAST_NORMAL, spawnX, spawnY, dx*2.2f, dy*2.2f, 1.0f,0.5f,0.0f, 0,0,false,true, sz, sz });
     } else {
-        float tx = playerX - spawnX, ty = playerY - spawnY;
-        float len = std::sqrt(tx*tx + ty*ty);
-        if (len != 0) { tx /= len; ty /= len; }
-        attacks.push_back({ NORMAL, spawnX, spawnY, tx*speed*1.5f, ty*speed*1.5f, 1,0,0.8f, 0,0,false,true,0.3f,0.3f });
+        float w = isHorizontal ? sz * 3.0f : sz;
+        float h = isHorizontal ? sz : sz * 3.0f;
+        attacks.push_back({ WIDE_NORMAL, spawnX, spawnY, dx*0.8f, dy*0.8f, 0.8f,0.2f,1.0f, 0,0,false,true, w, h });
     }
 }
 
@@ -124,19 +248,25 @@ void SpawnFromEvent(const LevelEvent& ev, std::vector<Attack>& targetContainer) 
     else if (ev.edge == 2) { sx = -1.4f; sy = ty; dx =  speed; }
     else if (ev.edge == 3) { sx =  1.4f; sy = ty; dx = -speed; }
     
-    float w = 0.3f, h = 0.3f;
+    float w = gridStep, h = gridStep;
     
     if (ev.type == LASER || ev.type == LONG_LASER) {
-        if (ev.edge == 0 || ev.edge == 1) { w = 2.8f; h = 0.15f; sx = 0.0f; sy = ty; dx = 0; dy = 0; }
-        else                              { w = 0.15f; h = 2.8f; sx = tx; sy = 0.0f; dx = 0; dy = 0; }
+        if (ev.edge == 0 || ev.edge == 1) { w = 2.8f; h = gridStep; sx = 0.0f; sy = ty; dx = 0; dy = 0; }
+        else                              { w = gridStep; h = 2.8f; sx = tx; sy = 0.0f; dx = 0; dy = 0; }
     } 
     else if (ev.type == MOVING_LASER) {
-        if (ev.edge == 0)      { sx = 0.0f; sy =  1.4f; dx = 0.0f;        dy = -speed * 0.25f; w = 2.8f; h = 0.15f; }
-        else if (ev.edge == 1) { sx = 0.0f; sy = -1.4f; dx = 0.0f;        dy =  speed * 0.25f; w = 2.8f; h = 0.15f; }
-        else if (ev.edge == 2) { sx = -1.4f; sy = 0.0f; dx =  speed * 0.25f; dy = 0.0f;        w = 0.15f; h = 2.8f; }
-        else                   { sx =  1.4f; sy = 0.0f; dx = -speed * 0.25f; dy = 0.0f;        w = 0.15f; h = 2.8f; }
+        if (ev.edge == 0)      { sx = 0.0f; sy =  1.4f; dx = 0.0f;        dy = -speed * 0.25f; w = 2.8f; h = gridStep; }
+        else if (ev.edge == 1) { sx = 0.0f; sy = -1.4f; dx = 0.0f;        dy =  speed * 0.25f; w = 2.8f; h = gridStep; }
+        else if (ev.edge == 2) { sx = -1.4f; sy = 0.0f; dx =  speed * 0.25f; dy = 0.0f;        w = gridStep; h = 2.8f; }
+        else                   { sx =  1.4f; sy = 0.0f; dx = -speed * 0.25f; dy = 0.0f;        w = gridStep; h = 2.8f; }
     } else if (ev.type == TILE_DMG) {
-        w = 0.8f; h = 0.8f; sx = tx; sy = ty; dx = 0; dy = 0;
+        w = gridStep; h = gridStep; sx = tx; sy = ty; dx = 0; dy = 0;
+    } else if (ev.type == FAST_NORMAL) {
+        w = gridStep; h = gridStep; dx *= 2.2f; dy *= 2.2f;
+    } else if (ev.type == WIDE_NORMAL) {
+        if (ev.edge == 0 || ev.edge == 1) { w = gridStep * 3.0f; h = gridStep; }
+        else                              { w = gridStep; h = gridStep * 3.0f; }
+        dx *= 0.8f; dy *= 0.8f;
     }
     
     float r = 1.0f, g = 1.0f, b = 1.0f;
@@ -148,13 +278,9 @@ void SpawnFromEvent(const LevelEvent& ev, std::vector<Attack>& targetContainer) 
     targetContainer.push_back({ ev.type, sx, sy, dx, dy, r, g, b, 0.0f, 0.0f, false, active, w, h });
 }
 
-/**
- * @brief Checks collision between the player and an attack hitbox.
- * @return True if the objects overlap.
- */
 bool checkCollision(float ax, float ay, float aw, float ah) {
-    return std::abs(cubeOffsetX - ax) < (0.15f + aw / 2.0f) &&
-           std::abs(cubeOffsetY - ay) < (0.15f + ah / 2.0f);
+    return std::abs(cubeOffsetX - ax) < (gridStep / 2.0f + aw / 2.0f - 0.02f) &&
+           std::abs(cubeOffsetY - ay) < (gridStep / 2.0f + ah / 2.0f - 0.02f);
 }
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
@@ -178,24 +304,143 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
     if (button == GLFW_MOUSE_BUTTON_LEFT) {
         if (action == GLFW_PRESS) {
             if (currentState == MENU) {
-                if (IsHovered(0.0f, 0.40f, 1.1f, 0.22f)) { ResetGame(window); currentState = GAME; levelMode = false; }
-                else if (IsHovered(0.0f, 0.10f, 1.1f, 0.22f)) { currentState = SETTINGS; }
-                else if (IsHovered(0.0f, -0.20f, 1.1f, 0.22f)) { currentState = LEVEL_EDITOR; }
-                else if (IsHovered(0.0f, -0.50f, 1.1f, 0.22f)) { glfwSetWindowShouldClose(window, true); }
-            } else if (currentState == SETTINGS || currentState == GAME_OVER) {
-                if (IsHovered(0.0f, -0.78f, 1.1f, 0.25f)) { currentState = MENU; }
-            } else if (currentState == LEVEL_EDITOR) {
-                if (IsHovered(1.10f, -0.80f, 0.5f, 0.2f)) { currentState = MENU; }
-                
-                if (IsHovered(1.10f - 0.22f, -0.58f, 0.15f, 0.15f)) { 
-                    currentLevel.duration = std::max(10.0f, currentLevel.duration - 10.0f); 
-                    editorTime = std::min(editorTime, currentLevel.duration);
+                const float BH = 0.22f, BW = 1.35f, BSTEP = 0.28f;
+                float by = 0.46f;
+                if (IsHovered(0.0f, by, BW, BH)) {
+                    ResetGame(window);
+                    currentState = GAME;
+                    levelMode = false;
+                    
+                    AudioStop(600);
                 }
-                if (IsHovered(1.10f + 0.22f, -0.58f, 0.15f, 0.15f)) { 
-                    currentLevel.duration += 10.0f; 
+                by -= BSTEP;
+                if (IsHovered(0.0f, by, BW, BH)) { currentState = CUSTOM_LEVELS; LoadCustomLevelsList(); customLevelScroll = 0; }
+                by -= BSTEP;
+                if (IsHovered(0.0f, by, BW, BH)) { currentState = SETTINGS; }
+                by -= BSTEP;
+                if (IsHovered(0.0f, by, BW, BH)) { currentState = LEVEL_EDITOR; AudioStop(400); }
+                by -= BSTEP;
+                if (IsHovered(0.0f, by, BW, BH)) { glfwSetWindowShouldClose(window, true); }
+
+            } else if (currentState == SETTINGS) {
+                if (IsHovered(0.0f, -0.94f, 1.20f, 0.19f)) {
+                    currentState = MENU;
+                    
+                    AudioPlayLoop(menuMusicPath, (float)audioVolumeLevel / 10.0f);
+                }
+                
+                if (IsHovered(-0.50f, -0.57f, 0.18f, 0.14f)) {
+                    audioVolumeLevel = std::max(0, audioVolumeLevel - 1);
+                    AudioSetVolume((float)audioVolumeLevel / 10.0f);
+                }
+                if (IsHovered(0.50f, -0.57f, 0.18f, 0.14f)) {
+                    audioVolumeLevel = std::min(10, audioVolumeLevel + 1);
+                    AudioSetVolume((float)audioVolumeLevel / 10.0f);
                 }
 
-                if (x >= -1.3f && x <= 0.3f && std::abs(y - (-0.85f)) < 0.1f) {
+            } else if (currentState == GAME_OVER) {
+                if (IsHovered(0.0f, -0.50f, 1.20f, 0.20f)) {
+                    currentState = MENU;
+                    AudioPlayLoop(menuMusicPath, (float)audioVolumeLevel / 10.0f);
+                }
+
+            } else if (currentState == LEVEL_COMPLETE) {
+                if (IsHovered(0.0f, -0.22f, 1.30f, 0.20f)) {
+                    ResetGame(window);
+                    currentState = GAME;
+                    
+                    if (!currentLevel.audioPath.empty())
+                        AudioPlayLoop(currentLevel.audioPath, (float)audioVolumeLevel / 10.0f);
+                    else
+                        AudioStop(400);
+                }
+                if (IsHovered(0.0f, -0.50f, 1.30f, 0.20f)) {
+                    currentState = CUSTOM_LEVELS;
+                    LoadCustomLevelsList();
+                    customLevelScroll = 0;
+                    AudioPlayLoop(menuMusicPath, (float)audioVolumeLevel / 10.0f);
+                }
+                if (IsHovered(0.0f, -0.78f, 1.30f, 0.20f)) {
+                    currentState = MENU;
+                    AudioPlayLoop(menuMusicPath, (float)audioVolumeLevel / 10.0f);
+                }
+
+            } else if (currentState == IMPORT_LEVEL) {
+                if (IsHovered(0.0f, -0.74f, 1.34f, 0.200f)) {
+                    currentState = CUSTOM_LEVELS;
+                    importPathBuffer.clear();
+                    importErrorMsg.clear();
+                }
+
+            } else if (currentState == CUSTOM_LEVELS) {
+                const float bottomY = -0.62f;
+                if (IsHovered(0.0f, bottomY,        1.30f, 0.210f)) {
+                    importPathBuffer.clear();
+                    importErrorMsg.clear();
+                    currentState = IMPORT_LEVEL;
+                }
+                if (IsHovered(0.0f, bottomY - 0.30f, 1.30f, 0.210f)) {
+                    currentState = MENU;
+                    AudioPlayLoop(menuMusicPath, (float)audioVolumeLevel / 10.0f);
+                }
+
+                if (!customLevelFiles.empty()) {
+                    const float LBH = 0.185f, LBSTEP = 0.215f;
+                    const float LIST_TOP = 0.55f;
+                    const int   VISIBLE  = 5;
+                    int total = (int)customLevelFiles.size();
+
+                    float arrowX     = 0.82f;
+                    float arrowUpY   = LIST_TOP + 0.01f;
+                    float arrowDownY = LIST_TOP - (VISIBLE - 1) * LBSTEP - 0.01f;
+
+                    if (IsHovered(arrowX, arrowUpY,   0.20f, LBH) && customLevelScroll > 0)
+                        customLevelScroll--;
+                    if (IsHovered(arrowX, arrowDownY, 0.20f, LBH) && customLevelScroll + VISIBLE < total)
+                        customLevelScroll++;
+
+                    int displayCount = std::min(VISIBLE, total - customLevelScroll);
+                    for (int i = 0; i < displayCount; ++i) {
+                        float buttonY = LIST_TOP - i * LBSTEP;
+                        if (IsHovered(0.0f, buttonY, 1.30f, LBH)) {
+                            if (ImportLevel(customLevelFiles[customLevelScroll + i])) {
+                                ResetGame(window);
+                                currentState = GAME;
+                                levelMode = true;
+                                
+                                if (!currentLevel.audioPath.empty())
+                                    AudioPlayLoop(currentLevel.audioPath, (float)audioVolumeLevel / 10.0f);
+                                else
+                                    AudioStop(400);
+                            }
+                        }
+                    }
+                }
+
+            } else if (currentState == LEVEL_EDITOR) {
+                const float colMid = 0.97f;
+
+                if (IsHovered(colMid, -0.92f, 0.52f, 0.16f)) { currentState = MENU; AudioPlayLoop(menuMusicPath, (float)audioVolumeLevel / 10.0f); }
+
+                
+                if (IsHovered(colMid, 0.93f, 0.62f, 0.14f)) {
+                    if (!editorAudioEditing) levelNameEditing = !levelNameEditing;
+                }
+
+                
+                if (IsHovered(colMid, 0.55f, 0.62f, 0.14f)) {
+                    if (!levelNameEditing) editorAudioEditing = !editorAudioEditing;
+                }
+
+                if (IsHovered(colMid - 0.22f, -0.72f, 0.18f, 0.14f)) {
+                    currentLevel.duration = std::max(10.0f, currentLevel.duration - 10.0f);
+                    editorTime = std::min(editorTime, currentLevel.duration);
+                }
+                if (IsHovered(colMid + 0.22f, -0.72f, 0.18f, 0.14f)) {
+                    currentLevel.duration += 10.0f;
+                }
+
+                if (x >= -1.25f && x <= 1.25f && std::abs(y - (-1.15f)) < 0.12f) {
                     isDraggingTimeline = true;
                 }
             }
@@ -206,9 +451,6 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
     }
 }
 
-/**
- * @brief Toggles fullscreen mode for the game window.
- */
 void ToggleFullscreen(GLFWwindow* window) {
     if (!isFullscreen) {
         glfwGetWindowPos(window, &savedX, &savedY);
@@ -222,9 +464,6 @@ void ToggleFullscreen(GLFWwindow* window) {
     isFullscreen = !isFullscreen;
 }
 
-/**
- * @brief Handles keyboard input in menus and gameplay.
- */
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     if (action == GLFW_PRESS || action == GLFW_REPEAT) {
         if (currentState == GAME) {
@@ -235,10 +474,117 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
         }
 
         if (currentState == GAME_OVER && key == GLFW_KEY_R) {
-            ResetGame(window); currentState = GAME;
+            ResetGame(window);
+            currentState = GAME;
+            
+            if (levelMode && !currentLevel.audioPath.empty())
+                AudioPlayLoop(currentLevel.audioPath, (float)audioVolumeLevel / 10.0f);
+        }
+
+        if (currentState == IMPORT_LEVEL) {
+            if (key == GLFW_KEY_ESCAPE) {
+                currentState = CUSTOM_LEVELS;
+                importPathBuffer.clear();
+                importErrorMsg.clear();
+            }
+            if (key == GLFW_KEY_BACKSPACE && !importPathBuffer.empty()) {
+                while (!importPathBuffer.empty() &&
+                       (importPathBuffer.back() & 0xC0) == 0x80) {
+                    importPathBuffer.pop_back();
+                }
+                if (!importPathBuffer.empty())
+                    importPathBuffer.pop_back();
+                importErrorMsg.clear();
+            }
+            if (key == GLFW_KEY_BACKSLASH && !(mods & GLFW_MOD_CONTROL)) {
+                importPathBuffer += (mods & GLFW_MOD_SHIFT) ? '|' : '\\';
+                importErrorMsg.clear();
+            }
+            if (key == GLFW_KEY_SEMICOLON && !(mods & GLFW_MOD_CONTROL)) {
+                importPathBuffer += (mods & GLFW_MOD_SHIFT) ? ':' : ';';
+                importErrorMsg.clear();
+            }
+            if (key == GLFW_KEY_SPACE && !(mods & GLFW_MOD_CONTROL)) {
+                importPathBuffer += ' ';
+                importErrorMsg.clear();
+            }
+            if (key == GLFW_KEY_A && (mods & GLFW_MOD_CONTROL)) {
+                importPathBuffer.clear();
+                importErrorMsg.clear();
+            }
+            if (key == GLFW_KEY_C && (mods & GLFW_MOD_CONTROL)) {
+                clipboard = importPathBuffer;
+            }
+            if (key == GLFW_KEY_V && (mods & GLFW_MOD_CONTROL)) {
+                const char* sysClip = glfwGetClipboardString(window);
+                if (sysClip) {
+                    importPathBuffer += sysClip;
+                } else {
+                    importPathBuffer += clipboard;
+                }
+                importErrorMsg.clear();
+            }
+            if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
+                if (!importPathBuffer.empty()) {
+                    if (ImportLevel(importPathBuffer)) {
+                        std::string cleanPath = importPathBuffer;
+                        if (cleanPath.size() >= 2 && cleanPath.front() == '"' && cleanPath.back() == '"')
+                            cleanPath = cleanPath.substr(1, cleanPath.size() - 2);
+                        if (std::find(customLevelFiles.begin(), customLevelFiles.end(), cleanPath) == customLevelFiles.end())
+                            customLevelFiles.push_back(cleanPath);
+                        SaveCustomLevelsIndex();
+                        importPathBuffer.clear();
+                        importErrorMsg.clear();
+                        currentState = CUSTOM_LEVELS;
+                    } else {
+                        importErrorMsg = "FILE NOT FOUND OR INVALID";
+                    }
+                }
+            }
         }
 
         if (currentState == LEVEL_EDITOR) {
+            
+            if (levelNameEditing) {
+                if (key == GLFW_KEY_BACKSPACE && !levelNameBuffer.empty())
+                    levelNameBuffer.pop_back();
+                if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER || key == GLFW_KEY_ESCAPE)
+                    levelNameEditing = false;
+                if (key == GLFW_KEY_C && (mods & GLFW_MOD_CONTROL))
+                    clipboard = levelNameBuffer;
+                if (key == GLFW_KEY_V && (mods & GLFW_MOD_CONTROL)) {
+                    for (char c : clipboard)
+                        if (levelNameBuffer.size() < 32) levelNameBuffer += c;
+                }
+                if (key == GLFW_KEY_A && (mods & GLFW_MOD_CONTROL))
+                    levelNameBuffer.clear();
+                return;
+            }
+
+            
+            if (editorAudioEditing) {
+                if (key == GLFW_KEY_BACKSPACE && !editorAudioPath.empty()) {
+                    while (!editorAudioPath.empty() && (editorAudioPath.back() & 0xC0) == 0x80)
+                        editorAudioPath.pop_back();
+                    if (!editorAudioPath.empty()) editorAudioPath.pop_back();
+                }
+                if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER || key == GLFW_KEY_ESCAPE)
+                    editorAudioEditing = false;
+                if (key == GLFW_KEY_A && (mods & GLFW_MOD_CONTROL))
+                    editorAudioPath.clear();
+                if (key == GLFW_KEY_V && (mods & GLFW_MOD_CONTROL)) {
+                    const char* sysClip = glfwGetClipboardString(window);
+                    if (sysClip) editorAudioPath += sysClip;
+                    else editorAudioPath += clipboard;
+                }
+                if (key == GLFW_KEY_C && (mods & GLFW_MOD_CONTROL))
+                    clipboard = editorAudioPath;
+                
+                if (key == GLFW_KEY_BACKSLASH && !(mods & GLFW_MOD_CONTROL))
+                    editorAudioPath += (mods & GLFW_MOD_SHIFT) ? '|' : '\\';
+                return;
+            }
+
             if (key == GLFW_KEY_RIGHT) editorCursorCol = std::min(editorCursorCol+1, gridCells-1);
             if (key == GLFW_KEY_LEFT)  editorCursorCol = std::max(editorCursorCol-1, 0);
             if (key == GLFW_KEY_DOWN)  editorCursorRow = std::max(editorCursorRow-1, 0);
@@ -252,14 +598,17 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
             }
 
             if (key == GLFW_KEY_SPACE) {
+                undoStack.push_back(currentLevel.events);
                 currentLevel.events.push_back({ editorSelectedType, editorTime, editorCursorCol, editorCursorRow, editorSelectedEdge });
                 std::sort(currentLevel.events.begin(), currentLevel.events.end(),
                     [](const LevelEvent& a, const LevelEvent& b){ return a.triggerTime < b.triggerTime; });
                 editorTime = std::min(currentLevel.duration, editorTime + 0.5f);
             }
 
-            if (key == GLFW_KEY_BACKSPACE && !currentLevel.events.empty())
+            if (key == GLFW_KEY_BACKSPACE && !currentLevel.events.empty()) {
+                undoStack.push_back(currentLevel.events);
                 currentLevel.events.pop_back();
+            }
 
             if (key == GLFW_KEY_1) editorSelectedType = NORMAL;
             if (key == GLFW_KEY_2) editorSelectedType = LASER;
@@ -267,6 +616,8 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
             if (key == GLFW_KEY_4) editorSelectedType = LONG_LASER;
             if (key == GLFW_KEY_5) editorSelectedType = TILE_DMG;
             if (key == GLFW_KEY_6) editorSelectedType = MOVING_LASER;
+            if (key == GLFW_KEY_7) editorSelectedType = FAST_NORMAL;
+            if (key == GLFW_KEY_8) editorSelectedType = WIDE_NORMAL;
 
             if (key == GLFW_KEY_P && action == GLFW_PRESS) {
                 editorPlaying = !editorPlaying;
@@ -280,19 +631,32 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
             }
 
             if (key == GLFW_KEY_E && action == GLFW_PRESS) {
-                std::cout << "\nLevel myLevel;\n";
-                std::cout << "myLevel.duration = " << currentLevel.duration << "f;\n";
-                for (auto& ev : currentLevel.events) {
-                    std::cout << "myLevel.events.push_back({"
-                        << ev.type << ", " << ev.triggerTime << "f, "
-                        << ev.gridCol << ", " << ev.gridRow << ", " << ev.edge << "});\n";
-                }
+                ExportLevel();
             }
 
-            if (key == GLFW_KEY_DELETE && action == GLFW_PRESS) currentLevel.events.clear();
+            if (key == GLFW_KEY_DELETE && action == GLFW_PRESS) {
+                undoStack.push_back(currentLevel.events);
+                currentLevel.events.clear();
+            }
+
+            if (key == GLFW_KEY_Z && action == GLFW_PRESS && (mods & GLFW_MOD_CONTROL)) {
+                if (!undoStack.empty()) {
+                    currentLevel.events = undoStack.back();
+                    undoStack.pop_back();
+                }
+            }
         }
 
-        if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) currentState = MENU;
+        if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+            if (currentState == IMPORT_LEVEL) {
+                currentState = CUSTOM_LEVELS;
+                importPathBuffer.clear();
+                importErrorMsg.clear();
+            } else {
+                currentState = MENU;
+                AudioPlayLoop(menuMusicPath, (float)audioVolumeLevel / 10.0f);
+            }
+        }
 
         if (currentState == SETTINGS && key == GLFW_KEY_G && action == GLFW_PRESS) {
             int nextSize = gridCells + 2;
@@ -301,10 +665,54 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
             UpdateGridVAO();
         }
 
+        
+        if (key == GLFW_KEY_KP_ADD && action == GLFW_PRESS) {
+            audioVolumeLevel = std::min(10, audioVolumeLevel + 1);
+            AudioSetVolume((float)audioVolumeLevel / 10.0f);
+        }
+        if (key == GLFW_KEY_KP_SUBTRACT && action == GLFW_PRESS) {
+            audioVolumeLevel = std::max(0, audioVolumeLevel - 1);
+            AudioSetVolume((float)audioVolumeLevel / 10.0f);
+        }
+
         if (key == GLFW_KEY_F1 && action == GLFW_PRESS) { if (isFullscreen) ToggleFullscreen(window); glfwSetWindowSize(window, 600, 600); }
         if (key == GLFW_KEY_F2 && action == GLFW_PRESS) { if (isFullscreen) ToggleFullscreen(window); glfwSetWindowSize(window, 900, 900); }
         if (key == GLFW_KEY_F3 && action == GLFW_PRESS) { if (isFullscreen) ToggleFullscreen(window); glfwSetWindowSize(window, 1200, 900); }
         if (key == GLFW_KEY_F4 && action == GLFW_PRESS) { ToggleFullscreen(window); }
+    }
+}
+
+void char_callback(GLFWwindow* window, unsigned int codepoint) {
+    if (currentState == IMPORT_LEVEL) {
+        if (codepoint < 0x80) {
+            importPathBuffer += (char)codepoint;
+        } else if (codepoint < 0x800) {
+            importPathBuffer += (char)(0xC0 | (codepoint >> 6));
+            importPathBuffer += (char)(0x80 | (codepoint & 0x3F));
+        } else if (codepoint < 0x10000) {
+            importPathBuffer += (char)(0xE0 | (codepoint >> 12));
+            importPathBuffer += (char)(0x80 | ((codepoint >> 6) & 0x3F));
+            importPathBuffer += (char)(0x80 | (codepoint & 0x3F));
+        }
+        importErrorMsg.clear();
+    }
+    if (currentState == LEVEL_EDITOR && levelNameEditing) {
+        if (codepoint < 128 && levelNameBuffer.size() < 32) {
+            levelNameBuffer += (char)codepoint;
+        }
+    }
+    
+    if (currentState == LEVEL_EDITOR && editorAudioEditing) {
+        if (codepoint < 0x80) {
+            editorAudioPath += (char)codepoint;
+        } else if (codepoint < 0x800) {
+            editorAudioPath += (char)(0xC0 | (codepoint >> 6));
+            editorAudioPath += (char)(0x80 | (codepoint & 0x3F));
+        } else if (codepoint < 0x10000) {
+            editorAudioPath += (char)(0xE0 | (codepoint >> 12));
+            editorAudioPath += (char)(0x80 | ((codepoint >> 6) & 0x3F));
+            editorAudioPath += (char)(0x80 | (codepoint & 0x3F));
+        }
     }
 }
 
@@ -316,6 +724,8 @@ const char* GetAttackName(AttackType t) {
         case LONG_LASER:  return "LONG-L";
         case TILE_DMG:    return "TILES";
         case MOVING_LASER:return "MOVE-L";
+        case FAST_NORMAL: return "FAST-N";
+        case WIDE_NORMAL: return "WIDE-N";
         default:          return "UNKNOWN";
     }
 }

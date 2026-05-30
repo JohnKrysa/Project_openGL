@@ -1,7 +1,4 @@
-/**
- * @file common.h
- * @brief Shared declarations, structures and constants used across the project.
- */
+
 
 #pragma once
 #include <GL/glew.h>
@@ -13,12 +10,13 @@
 #include <ctime>
 #include <cmath>
 #include <algorithm>
+#include <fstream>
+#include <sstream>
+#include <filesystem>
 
-// Enums
-enum GameState { MENU, SETTINGS, GAME, GAME_OVER, LEVEL_EDITOR };
-enum AttackType { NORMAL, LASER, BOOMERANG, LONG_LASER, TILE_DMG, MOVING_LASER };
+enum GameState { MENU, SETTINGS, GAME, GAME_OVER, LEVEL_COMPLETE, LEVEL_EDITOR, CUSTOM_LEVELS, IMPORT_LEVEL };
+enum AttackType { NORMAL, LASER, BOOMERANG, LONG_LASER, TILE_DMG, MOVING_LASER, FAST_NORMAL, WIDE_NORMAL };
 
-// Structs
 struct Attack {
     AttackType type;
     float x, y, dx, dy;
@@ -43,9 +41,9 @@ struct Level {
     std::string            name;
     std::vector<LevelEvent> events;
     float                  duration = 60.0f;
+    std::string            audioPath; 
 };
 
-// Externí globální proměnné
 extern GameState currentState;
 extern AttackType editorSelectedType;
 extern float cubeOffsetX;
@@ -72,7 +70,7 @@ extern int          editorCursorRow;
 extern float        editorTime;
 extern int          editorSelectedEdge; 
 extern bool         editorPlaying;
-extern float         editorPlayStart;
+extern float        editorPlayStart;
 extern size_t       editorNextEvent;
 extern bool         levelMode; 
 extern bool         isDraggingTimeline; 
@@ -86,6 +84,27 @@ extern unsigned int textVAO, textVBO;
 
 extern std::string vertexShaderSource;
 extern std::string fragmentShaderSource;
+
+extern std::vector<std::vector<LevelEvent>> undoStack;
+
+extern std::string clipboard;
+
+extern std::vector<std::string> customLevelFiles;
+extern int customLevelScroll;
+
+extern std::string exportNotifMsg;
+extern float exportNotifTimer;
+
+extern std::string importPathBuffer;
+extern std::string importErrorMsg;
+
+extern std::string levelNameBuffer;
+extern bool        levelNameEditing;
+
+extern std::string editorAudioPath;    
+extern bool        editorAudioEditing; 
+
+extern int         audioVolumeLevel;   
 
 void SetGridSize(int size);
 void UpdateGridVAO();
@@ -106,4 +125,10 @@ void DrawDynamicLines(const std::vector<float>& pts);
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods);
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
+void char_callback(GLFWwindow* window, unsigned int codepoint);
 void ToggleFullscreen(GLFWwindow* window);
+
+void ExportLevel();
+void LoadCustomLevelsList();
+void SaveCustomLevelsIndex();
+bool ImportLevel(const std::string& path);

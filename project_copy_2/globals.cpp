@@ -1,7 +1,4 @@
-/**
- * @file globals.cpp
- * @brief Definitions of globally shared variables.
- */
+
 
 #include "common.h"
 
@@ -43,3 +40,23 @@ int  savedX        = 100, savedY      = 100;
 
 unsigned int gridVAO, gridVBO;
 unsigned int textVAO, textVBO;
+
+std::vector<std::vector<LevelEvent>> undoStack;
+
+std::string clipboard;
+
+std::vector<std::string> customLevelFiles;
+int customLevelScroll = 0;
+
+std::string exportNotifMsg;
+float exportNotifTimer = 0.0f;
+
+std::string importPathBuffer;
+std::string importErrorMsg;
+
+std::string levelNameBuffer;
+bool        levelNameEditing = false;
+
+std::string editorAudioPath;         
+bool        editorAudioEditing = false;
+int         audioVolumeLevel   = 7;  
