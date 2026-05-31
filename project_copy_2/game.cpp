@@ -1,10 +1,36 @@
 
 
+/**
+ * @file game.cpp
+ * @brief Herní logika, správa levelů, kolize, GLFW callbacky a editor levelů.
+ *
+ * Modul zajišťuje:
+ * - Spawn útoků v nekonečném módu (SpawnAttack) i z level eventů (SpawnFromEvent)
+ * - Detekci kolize hráče s útoky (checkCollision)
+ * - Funkce pro export/import levelů do/ze souborů
+ * - Reset hry a nastavení mřížky
+ * - Obsluhu vstupu (klávesnice, myš) pro všechny herní obrazovky
+ */
+
 #include "common.h"
 #include "audio.h"
 
 namespace fs = std::filesystem;
 
+/**
+ * @brief Exportuje aktuální level do textového souboru v adresáři levels/.
+ *
+ * Formát souboru:
+ * @code
+ * NAME  <název>
+ * DURATION <sekundy>
+ * AUDIO <cesta>          (volitelné)
+ * <type> <triggerTime> <col> <row> <edge>
+ * ...
+ * @endcode
+ *
+ * Po úspěchu nastaví exportNotifMsg a exportNotifTimer (3 s zobrazení).
+ */
 void ExportLevel() {
     if (!fs::exists("levels")) {
         fs::create_directory("levels");
@@ -194,6 +220,23 @@ void GetAttackColor(AttackType t, float& r, float& g, float& b) {
     }
 }
 
+/**
+ * @brief Spawne náhodný útok v nekonečném herním módu.
+ *
+ * Typ útoku se určuje náhodně (rand() % 16), přičemž pravděpodobnosti
+ * jsou rovnoměrně rozděleny do 8 skupin po 2. Rychlost a velikost útoků
+ * se škálují přes globalSpeedMultiplier a gridStep.
+ *
+ * Typy a jejich chování:
+ * - NORMAL / BOOMERANG / FAST_NORMAL: letí ze strany, čtvercový hitbox
+ * - LASER / LONG_LASER: statický pruh přes celé hřiště
+ * - TILE_DMG: označí náhodnou dlaždici, poté zasáhne
+ * - MOVING_LASER: laser pomalu projíždějící hřištěm
+ * - WIDE_NORMAL: široký projektil pokrývající 3 dlaždice
+ *
+ * @param playerX Aktuální X pozice hráče (rezervováno pro budoucí homing útoky)
+ * @param playerY Aktuální Y pozice hráče
+ */
 void SpawnAttack(float playerX, float playerY) {
     int   attackType = rand() % 16;
     float speed = 1.2f * globalSpeedMultiplier;
@@ -208,26 +251,27 @@ void SpawnAttack(float playerX, float playerY) {
     else                { spawnX =  1.4f; spawnY = randPos; dx = -speed; }
 
     bool isHorizontal = (edge == 0 || edge == 1);
-    float sz = gridStep;
+    float sz = gridStep * 0.60f;   // menší než jeden node
+    float lw = gridStep * 0.35f;   // šířka laseru (užší pruh)
     float tL = 2.8f;
 
     if (attackType < 3) {
         attacks.push_back({ NORMAL, spawnX, spawnY, dx, dy, 1.0f, 0.1f, 0.6f, 0,0,false,true, sz, sz });
     } else if (attackType < 5) {
-        if (isHorizontal) attacks.push_back({ LASER, 0.0f, gridCoords[rand()%gridCells], 0,0, 0,1,1, 0,0,false,false, tL, sz });
-        else              attacks.push_back({ LASER, gridCoords[rand()%gridCells], 0.0f, 0,0, 0,1,1, 0,0,false,false, sz, tL });
+        if (isHorizontal) attacks.push_back({ LASER, 0.0f, gridCoords[rand()%gridCells], 0,0, 0,1,1, 0,0,false,false, tL, lw });
+        else              attacks.push_back({ LASER, gridCoords[rand()%gridCells], 0.0f, 0,0, 0,1,1, 0,0,false,false, lw, tL });
     } else if (attackType < 7) {
         attacks.push_back({ BOOMERANG, spawnX, spawnY, dx*1.2f, dy*1.2f, 1.0f,0.6f,0.1f, 0,0,false,true, sz, sz });
     } else if (attackType < 9) {
-        if (isHorizontal) attacks.push_back({ LONG_LASER, 0.0f, gridCoords[rand()%gridCells], 0,0, 1,0.8f,0, 0,0,false,false, tL, sz });
-        else              attacks.push_back({ LONG_LASER, gridCoords[rand()%gridCells], 0.0f, 0,0, 1,0.8f,0, 0,0,false,false, sz, tL });
+        if (isHorizontal) attacks.push_back({ LONG_LASER, 0.0f, gridCoords[rand()%gridCells], 0,0, 1,0.8f,0, 0,0,false,false, tL, lw });
+        else              attacks.push_back({ LONG_LASER, gridCoords[rand()%gridCells], 0.0f, 0,0, 1,0.8f,0, 0,0,false,false, lw, tL });
     } else if (attackType < 11) {
         float rx = gridCoords[rand()%gridCells];
         float ry = gridCoords[rand()%gridCells];
         attacks.push_back({ TILE_DMG, rx, ry, 0,0, 1,0.2f,0.2f, 0,0,false,false, sz, sz });
     } else if (attackType < 13) {
-        if (isHorizontal) attacks.push_back({ MOVING_LASER, 0.0f, spawnY, 0, dy*0.25f, 0.2f,1,0.2f, 0,0,false,true, tL, sz });
-        else              attacks.push_back({ MOVING_LASER, spawnX, 0.0f, dx*0.25f, 0, 0.2f,1,0.2f, sz, tL });
+        if (isHorizontal) attacks.push_back({ MOVING_LASER, 0.0f, spawnY, 0, dy*0.25f, 0.2f,1,0.2f, 0,0,false,true, tL, lw });
+        else              attacks.push_back({ MOVING_LASER, spawnX, 0.0f, dx*0.25f, 0, 0.2f,1,0.2f, lw, tL });
     } else if (attackType < 15) {
         attacks.push_back({ FAST_NORMAL, spawnX, spawnY, dx*2.2f, dy*2.2f, 1.0f,0.5f,0.0f, 0,0,false,true, sz, sz });
     } else {
@@ -237,6 +281,16 @@ void SpawnAttack(float playerX, float playerY) {
     }
 }
 
+/**
+ * @brief Spawne útok podle dat z LevelEvent (editor / level mód).
+ *
+ * Určí počáteční pozici a směr pohybu podle ev.edge a ev.gridCol/Row.
+ * Pro laserové typy (LASER, LONG_LASER, MOVING_LASER) ignoruje col/row
+ * a nastaví fixní šířku pokrývající celé hřiště.
+ *
+ * @param ev              Událost načtená z levelu
+ * @param targetContainer Vektor, do kterého se nový útok přidá
+ */
 void SpawnFromEvent(const LevelEvent& ev, std::vector<Attack>& targetContainer) {
     float speed = 1.2f * globalSpeedMultiplier;
     float sx = 0, sy = 0, dx = 0, dy = 0;
@@ -248,24 +302,26 @@ void SpawnFromEvent(const LevelEvent& ev, std::vector<Attack>& targetContainer) 
     else if (ev.edge == 2) { sx = -1.4f; sy = ty; dx =  speed; }
     else if (ev.edge == 3) { sx =  1.4f; sy = ty; dx = -speed; }
     
-    float w = gridStep, h = gridStep;
+    float sz = gridStep * 0.60f;
+    float lw = gridStep * 0.35f;
+    float w = sz, h = sz;
     
     if (ev.type == LASER || ev.type == LONG_LASER) {
-        if (ev.edge == 0 || ev.edge == 1) { w = 2.8f; h = gridStep; sx = 0.0f; sy = ty; dx = 0; dy = 0; }
-        else                              { w = gridStep; h = 2.8f; sx = tx; sy = 0.0f; dx = 0; dy = 0; }
+        if (ev.edge == 0 || ev.edge == 1) { w = 2.8f; h = lw; sx = 0.0f; sy = ty; dx = 0; dy = 0; }
+        else                              { w = lw; h = 2.8f; sx = tx; sy = 0.0f; dx = 0; dy = 0; }
     } 
     else if (ev.type == MOVING_LASER) {
-        if (ev.edge == 0)      { sx = 0.0f; sy =  1.4f; dx = 0.0f;        dy = -speed * 0.25f; w = 2.8f; h = gridStep; }
-        else if (ev.edge == 1) { sx = 0.0f; sy = -1.4f; dx = 0.0f;        dy =  speed * 0.25f; w = 2.8f; h = gridStep; }
-        else if (ev.edge == 2) { sx = -1.4f; sy = 0.0f; dx =  speed * 0.25f; dy = 0.0f;        w = gridStep; h = 2.8f; }
-        else                   { sx =  1.4f; sy = 0.0f; dx = -speed * 0.25f; dy = 0.0f;        w = gridStep; h = 2.8f; }
+        if (ev.edge == 0)      { sx = 0.0f; sy =  1.4f; dx = 0.0f;        dy = -speed * 0.25f; w = 2.8f; h = lw; }
+        else if (ev.edge == 1) { sx = 0.0f; sy = -1.4f; dx = 0.0f;        dy =  speed * 0.25f; w = 2.8f; h = lw; }
+        else if (ev.edge == 2) { sx = -1.4f; sy = 0.0f; dx =  speed * 0.25f; dy = 0.0f;        w = lw; h = 2.8f; }
+        else                   { sx =  1.4f; sy = 0.0f; dx = -speed * 0.25f; dy = 0.0f;        w = lw; h = 2.8f; }
     } else if (ev.type == TILE_DMG) {
-        w = gridStep; h = gridStep; sx = tx; sy = ty; dx = 0; dy = 0;
+        w = sz; h = sz; sx = tx; sy = ty; dx = 0; dy = 0;
     } else if (ev.type == FAST_NORMAL) {
-        w = gridStep; h = gridStep; dx *= 2.2f; dy *= 2.2f;
+        w = sz; h = sz; dx *= 2.2f; dy *= 2.2f;
     } else if (ev.type == WIDE_NORMAL) {
-        if (ev.edge == 0 || ev.edge == 1) { w = gridStep * 3.0f; h = gridStep; }
-        else                              { w = gridStep; h = gridStep * 3.0f; }
+        if (ev.edge == 0 || ev.edge == 1) { w = sz * 3.0f; h = sz; }
+        else                              { w = sz; h = sz * 3.0f; }
         dx *= 0.8f; dy *= 0.8f;
     }
     
@@ -278,6 +334,18 @@ void SpawnFromEvent(const LevelEvent& ev, std::vector<Attack>& targetContainer) 
     targetContainer.push_back({ ev.type, sx, sy, dx, dy, r, g, b, 0.0f, 0.0f, false, active, w, h });
 }
 
+/**
+ * @brief AABB kolize hráče s obdélníkovým útokem.
+ *
+ * Hráč je považován za čtverec o straně gridStep * 0.75.
+ * Malý epsilon (0.02) snižuje frustraci z hraničních kolizí.
+ *
+ * @param ax Střed útoku X
+ * @param ay Střed útoku Y
+ * @param aw Šířka útoku
+ * @param ah Výška útoku
+ * @return true pokud se hráč překrývá s útokem
+ */
 bool checkCollision(float ax, float ay, float aw, float ah) {
     return std::abs(cubeOffsetX - ax) < (gridStep / 2.0f + aw / 2.0f - 0.02f) &&
            std::abs(cubeOffsetY - ay) < (gridStep / 2.0f + ah / 2.0f - 0.02f);

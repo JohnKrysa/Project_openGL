@@ -1,3 +1,20 @@
+/**
+ * @file main.cpp
+ * @brief Vstupní bod aplikace, hlavní herní smyčka a veškeré vykreslování.
+ *
+ * Inicializuje GLFW okno, OpenGL kontext (3.3 Core Profile) a GLEW.
+ * Spravuje hlavní smyčku (game loop) s pevnou logikou a variabilním renderem.
+ *
+ * Struktura main():
+ * 1. Inicializace GLFW, okna, GLEW, audio enginu
+ * 2. Vytvoření shader programu a VAO/VBO (rect, quad, grid, text)
+ * 3. Registrace GLFW callbacků
+ * 4. Hlavní smyčka:
+ *    - Aktualizace audio (fade-out)
+ *    - Herní logika podle currentState (pohyb hráče, spawn útoků, kolize)
+ *    - Renderování (mřížka, hráč, útoky, UI)
+ * 5. Úklid (AudioShutdown, glfwTerminate)
+ */
 #include "common.h"
 #include "audio.h"
 
@@ -419,7 +436,7 @@ int main() {
             float pulse = 0.8f + 0.2f * sinf(currentFrame * 6.0f);
             glBindVertexArray(quadVAO);
             glUniform2f(offsetLoc, cubeOffsetX, cubeOffsetY);
-            glUniform2f(scaleLoc,  gridStep, gridStep);
+            glUniform2f(scaleLoc,  gridStep * 0.75f, gridStep * 0.75f);
             glUniform4f(colorLoc, 0.0f, pulse, pulse, 1.0f);
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 

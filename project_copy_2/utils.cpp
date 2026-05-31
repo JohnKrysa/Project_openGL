@@ -1,7 +1,23 @@
 
 
+/**
+ * @file utils.cpp
+ * @brief Shader kód, pomocné funkce pro renderování a vektorový font.
+ *
+ * Obsahuje:
+ * - Zdrojový kód GLSL shaderů (vertex + fragment)
+ * - Kompilaci a linkování shader programu (CreateShader)
+ * - Generování geometrie vektorového textu (A–Z, a–z, 0–9, základní znaky)
+ * - Vykreslování dynamických úseček přes textVBO
+ */
 #include "common.h"
 
+/**
+ * @brief GLSL vertex shader.
+ *
+ * Transformuje vertex pozice pomocí uniformů offset, scale, viewOffset, viewScale
+ * a koriguje aspect ratio. Výsledek je perspektivně ořezán koeficientem 0.7.
+ */
 std::string vertexShaderSource = R"(#version 330 core
 layout (location = 0) in vec3 aPos;
 uniform vec2 offset;
@@ -14,11 +30,22 @@ void main() {
     gl_Position = vec4(pos.x / aspect * 0.7, pos.y * 0.7, 0.0, 1.0);
 })";
 
+/**
+ * @brief GLSL fragment shader.
+ *
+ * Jednoduše přiřadí uniformní barvu každému fragmentu.
+ */
 std::string fragmentShaderSource = R"(#version 330 core
 uniform vec4 color;
 out vec4 FragColor;
 void main() { FragColor = color; })";
 
+/**
+ * @brief Zkompiluje jeden GLSL shader.
+ * @param type   Typ shaderu (GL_VERTEX_SHADER nebo GL_FRAGMENT_SHADER)
+ * @param source Zdrojový kód shaderu
+ * @return OpenGL ID shaderu, nebo 0 při chybě
+ */
 static unsigned int CompileShader(unsigned int type, const std::string& source) {
     unsigned int id = glCreateShader(type);
     const char* src = source.c_str();
@@ -143,6 +170,14 @@ std::vector<float> GenerateText(const std::string& str, float startX, float star
     return pts;
 }
 
+/**
+ * @brief Nahraje vrcholy do textVBO a vykreslí je jako GL_LINES.
+ *
+ * Funkci volej po každém GenerateText() – data nejsou persistentní.
+ * Prázdný vektor je přeskočen bez OpenGL volání.
+ *
+ * @param pts Vektor vrcholů (formát XYZ, tedy 3 floaty na vrchol)
+ */
 void DrawDynamicLines(const std::vector<float>& pts) {
     if (pts.empty()) return;
     glBindVertexArray(textVAO);

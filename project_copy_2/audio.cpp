@@ -1,4 +1,11 @@
-
+/**
+ * @file audio.cpp
+ * @brief Implementace audio systému (miniaudio backend).
+ *
+ * Spravuje jeden globální ma_engine a jeden aktivní ma_sound stream.
+ * Fade-out je řešen softwarově v AudioUpdate() – hlasitost se lineárně
+ * snižuje z počáteční hodnoty na nulu během zadaného intervalu.
+ */
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
@@ -9,20 +16,19 @@
 std::string menuMusicPath;
 std::string currentLevelAudioPath;
 
-static ma_engine   s_engine;
-static ma_sound    s_sound;
-static bool        s_engineReady   = false;
-static bool        s_soundLoaded   = false;
-static float       s_volume        = 0.7f;
+static ma_engine   s_engine;          ///< Globální audio engine
+static ma_sound    s_sound;           ///< Aktuálně načtený zvukový stream
+static bool        s_engineReady   = false; ///< True pokud byl engine úspěšně inicializován
+static bool        s_soundLoaded   = false; ///< True pokud je zvuk načten a připraven
+static float       s_volume        = 0.7f;  ///< Cílová hlasitost (0–1)
 
-static bool        s_fading        = false;
-static float       s_fadeRemaining = 0.0f;  
-static float       s_fadeDuration  = 0.0f;  
-static float       s_fadeStartVol  = 0.7f;
+static bool        s_fading        = false;     ///< Zda právě probíhá fade-out
+static float       s_fadeRemaining = 0.0f;      ///< Zbývající čas fade-out (sekundy)
+static float       s_fadeDuration  = 0.0f;      ///< Celková délka fade-out (sekundy)
+static float       s_fadeStartVol  = 0.7f;      ///< Hlasitost na začátku fade-out
 
 bool AudioInit() {
     ma_engine_config cfg = ma_engine_config_init();
-    
     cfg.channels    = 2;
     cfg.sampleRate  = 44100;
 
@@ -50,12 +56,12 @@ void AudioPlayLoop(const std::string& path, float volume) {
     if (!s_engineReady) return;
     if (path.empty()) { AudioStop(0); return; }
 
-    
+    // Odstranění případných uvozovek z cesty
     std::string cleanPath = path;
     if (cleanPath.size() >= 2 && cleanPath.front() == '"' && cleanPath.back() == '"')
         cleanPath = cleanPath.substr(1, cleanPath.size() - 2);
 
-    
+    // Zastavení a uvolnění předchozího zvuku
     if (s_soundLoaded) {
         ma_sound_stop(&s_sound);
         ma_sound_uninit(&s_sound);
@@ -63,9 +69,10 @@ void AudioPlayLoop(const std::string& path, float volume) {
     }
     s_fading = false;
 
-    
-    ma_uint32 flags = MA_SOUND_FLAG_STREAM; 
-    if (ma_sound_init_from_file(&s_engine, cleanPath.c_str(), flags, nullptr, nullptr, &s_sound) != MA_SUCCESS) {
+    // Načtení nového zvuku jako streamu (nízká paměťová náročnost)
+    ma_uint32 flags = MA_SOUND_FLAG_STREAM;
+    if (ma_sound_init_from_file(&s_engine, cleanPath.c_str(), flags,
+                                nullptr, nullptr, &s_sound) != MA_SUCCESS) {
         std::cerr << "[Audio] Nelze nacist soubor: " << cleanPath << "\n";
         return;
     }
@@ -82,12 +89,13 @@ void AudioStop(int fadeMs) {
     if (!s_engineReady || !s_soundLoaded) return;
 
     if (fadeMs <= 0) {
+        // Okamžité zastavení
         ma_sound_stop(&s_sound);
         ma_sound_uninit(&s_sound);
         s_soundLoaded = false;
         s_fading = false;
     } else {
-        
+        // Spuštění fade-out; skutečné zastavení proběhne v AudioUpdate()
         s_fading        = true;
         s_fadeDuration  = (float)fadeMs / 1000.0f;
         s_fadeRemaining = s_fadeDuration;
@@ -116,14 +124,15 @@ void AudioUpdate(float deltaTime) {
     if (s_fading) {
         s_fadeRemaining -= deltaTime;
         if (s_fadeRemaining <= 0.0f) {
-            
+            // Fade-out dokončen – zastavit a uvolnit zvuk
             ma_sound_stop(&s_sound);
             ma_sound_uninit(&s_sound);
             s_soundLoaded   = false;
             s_fading        = false;
-            s_volume        = s_fadeStartVol; 
+            s_volume        = s_fadeStartVol; // Obnovit hlasitost pro příští přehrávání
         } else {
-            float t   = s_fadeRemaining / s_fadeDuration; 
+            // Lineární interpolace hlasitosti směrem k nule
+            float t   = s_fadeRemaining / s_fadeDuration;
             float vol = s_fadeStartVol * t;
             ma_sound_set_volume(&s_sound, vol);
         }
