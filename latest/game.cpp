@@ -238,6 +238,7 @@ void GetAttackColor(AttackType t, float& r, float& g, float& b) {
  * @param playerY Aktuální Y pozice hráče
  */
 void SpawnAttack(float playerX, float playerY) {
+    // 16 "slotů" rovnoměrně rozdělených mezi 8 typů útoku (každý typ má 2 sloty)
     int   attackType = rand() % 16;
     float speed = 1.2f * globalSpeedMultiplier;
 
@@ -245,36 +246,46 @@ void SpawnAttack(float playerX, float playerY) {
     float spawnX  = 0.0f, spawnY = 0.0f, dx = 0.0f, dy = 0.0f;
     float randPos = gridCoords[rand() % gridCells];
 
-    if      (edge == 0) { spawnX = randPos; spawnY =  1.4f; dy = -speed; }
-    else if (edge == 1) { spawnX = randPos; spawnY = -1.4f; dy =  speed; }
-    else if (edge == 2) { spawnX = -1.4f; spawnY = randPos; dx =  speed; }
-    else                { spawnX =  1.4f; spawnY = randPos; dx = -speed; }
+    // Spawn pozice a směr pohybu podle hrany (viz SpawnEdge)
+    if      (edge == EDGE_TOP)    { spawnX = randPos; spawnY =  1.4f; dy = -speed; }
+    else if (edge == EDGE_BOTTOM) { spawnX = randPos; spawnY = -1.4f; dy =  speed; }
+    else if (edge == EDGE_LEFT)   { spawnX = -1.4f; spawnY = randPos; dx =  speed; }
+    else                          { spawnX =  1.4f; spawnY = randPos; dx = -speed; }
 
-    bool isHorizontal = (edge == 0 || edge == 1);
-    float sz = gridStep * 0.60f;   // menší než jeden node
-    float lw = gridStep * 0.35f;   // šířka laseru (užší pruh)
-    float tL = 2.8f;
+    // Útok přichází shora nebo zdola = pohybuje se horizontálně přes hřiště
+    bool isHorizontal = (edge == EDGE_TOP || edge == EDGE_BOTTOM);
+
+    // Velikost projektilu (o něco menší než jedna buňka mřížky)
+    const float sz = gridStep * 0.60f;
+    // Šířka laserového pruhu (užší než buňka, aby byl laser čitelný)
+    const float lw = gridStep * 0.35f;
+    // Délka laseru pokrývající celé hřiště včetně okrajů
+    const float totalLaserLength = 2.8f;
 
     if (attackType < 3) {
         attacks.push_back({ NORMAL, spawnX, spawnY, dx, dy, 1.0f, 0.1f, 0.6f, 0,0,false,true, sz, sz });
     } else if (attackType < 5) {
-        if (isHorizontal) attacks.push_back({ LASER, 0.0f, gridCoords[rand()%gridCells], 0,0, 0,1,1, 0,0,false,false, tL, lw });
-        else              attacks.push_back({ LASER, gridCoords[rand()%gridCells], 0.0f, 0,0, 0,1,1, 0,0,false,false, lw, tL });
+        if (isHorizontal) attacks.push_back({ LASER, 0.0f, gridCoords[rand()%gridCells], 0,0, 0,1,1, 0,0,false,false, totalLaserLength, lw });
+        else              attacks.push_back({ LASER, gridCoords[rand()%gridCells], 0.0f, 0,0, 0,1,1, 0,0,false,false, lw, totalLaserLength });
     } else if (attackType < 7) {
+        // Boomerang letí o 20 % rychleji než normální projektil
         attacks.push_back({ BOOMERANG, spawnX, spawnY, dx*1.2f, dy*1.2f, 1.0f,0.6f,0.1f, 0,0,false,true, sz, sz });
     } else if (attackType < 9) {
-        if (isHorizontal) attacks.push_back({ LONG_LASER, 0.0f, gridCoords[rand()%gridCells], 0,0, 1,0.8f,0, 0,0,false,false, tL, lw });
-        else              attacks.push_back({ LONG_LASER, gridCoords[rand()%gridCells], 0.0f, 0,0, 1,0.8f,0, 0,0,false,false, lw, tL });
+        if (isHorizontal) attacks.push_back({ LONG_LASER, 0.0f, gridCoords[rand()%gridCells], 0,0, 1,0.8f,0, 0,0,false,false, totalLaserLength, lw });
+        else              attacks.push_back({ LONG_LASER, gridCoords[rand()%gridCells], 0.0f, 0,0, 1,0.8f,0, 0,0,false,false, lw, totalLaserLength });
     } else if (attackType < 11) {
         float rx = gridCoords[rand()%gridCells];
         float ry = gridCoords[rand()%gridCells];
         attacks.push_back({ TILE_DMG, rx, ry, 0,0, 1,0.2f,0.2f, 0,0,false,false, sz, sz });
     } else if (attackType < 13) {
-        if (isHorizontal) attacks.push_back({ MOVING_LASER, 0.0f, spawnY, 0, dy*0.25f, 0.2f,1,0.2f, 0,0,false,true, tL, lw });
-        else              attacks.push_back({ MOVING_LASER, spawnX, 0.0f, dx*0.25f, 0, 0.2f,1,0.2f, lw, tL });
+        // Pohybující se laser se pohybuje čtvrtinovou rychlostí normálního projektilu
+        if (isHorizontal) attacks.push_back({ MOVING_LASER, 0.0f, spawnY, 0, dy*0.25f, 0.2f,1,0.2f, 0,0,false,true, totalLaserLength, lw });
+        else              attacks.push_back({ MOVING_LASER, spawnX, 0.0f, dx*0.25f, 0, 0.2f,1,0.2f, lw, totalLaserLength });
     } else if (attackType < 15) {
+        // Rychlý projektil letí 2.2× rychleji než normální
         attacks.push_back({ FAST_NORMAL, spawnX, spawnY, dx*2.2f, dy*2.2f, 1.0f,0.5f,0.0f, 0,0,false,true, sz, sz });
     } else {
+        // Široký projektil pokrývá 3 buňky; letí o 20 % pomaleji
         float w = isHorizontal ? sz * 3.0f : sz;
         float h = isHorizontal ? sz : sz * 3.0f;
         attacks.push_back({ WIDE_NORMAL, spawnX, spawnY, dx*0.8f, dy*0.8f, 0.8f,0.2f,1.0f, 0,0,false,true, w, h });
@@ -297,37 +308,47 @@ void SpawnFromEvent(const LevelEvent& ev, std::vector<Attack>& targetContainer) 
     float tx = gridCoords[std::min(ev.gridCol, (int)gridCoords.size()-1)];
     float ty = gridCoords[std::min(ev.gridRow, (int)gridCoords.size()-1)];
 
-    if      (ev.edge == 0) { sx = tx; sy =  1.4f; dy = -speed; }
-    else if (ev.edge == 1) { sx = tx; sy = -1.4f; dy =  speed; }
-    else if (ev.edge == 2) { sx = -1.4f; sy = ty; dx =  speed; }
-    else if (ev.edge == 3) { sx =  1.4f; sy = ty; dx = -speed; }
+    // Spawn pozice a směr pohybu podle hrany (viz SpawnEdge)
+    if      (ev.edge == EDGE_TOP)    { sx = tx; sy =  1.4f; dy = -speed; }
+    else if (ev.edge == EDGE_BOTTOM) { sx = tx; sy = -1.4f; dy =  speed; }
+    else if (ev.edge == EDGE_LEFT)   { sx = -1.4f; sy = ty; dx =  speed; }
+    else if (ev.edge == EDGE_RIGHT)  { sx =  1.4f; sy = ty; dx = -speed; }
     
-    float sz = gridStep * 0.60f;
-    float lw = gridStep * 0.35f;
+    // Velikost projektilu (o něco menší než jedna buňka mřížky)
+    const float sz = gridStep * 0.60f;
+    // Šířka laserového pruhu
+    const float lw = gridStep * 0.35f;
+    // Délka laseru pokrývající celé hřiště
+    const float totalLaserLength = 2.8f;
+
     float w = sz, h = sz;
     
     if (ev.type == LASER || ev.type == LONG_LASER) {
-        if (ev.edge == 0 || ev.edge == 1) { w = 2.8f; h = lw; sx = 0.0f; sy = ty; dx = 0; dy = 0; }
-        else                              { w = lw; h = 2.8f; sx = tx; sy = 0.0f; dx = 0; dy = 0; }
+        if (ev.edge == EDGE_TOP || ev.edge == EDGE_BOTTOM) { w = totalLaserLength; h = lw; sx = 0.0f; sy = ty; dx = 0; dy = 0; }
+        else                                               { w = lw; h = totalLaserLength; sx = tx; sy = 0.0f; dx = 0; dy = 0; }
     } 
     else if (ev.type == MOVING_LASER) {
-        if (ev.edge == 0)      { sx = 0.0f; sy =  1.4f; dx = 0.0f;        dy = -speed * 0.25f; w = 2.8f; h = lw; }
-        else if (ev.edge == 1) { sx = 0.0f; sy = -1.4f; dx = 0.0f;        dy =  speed * 0.25f; w = 2.8f; h = lw; }
-        else if (ev.edge == 2) { sx = -1.4f; sy = 0.0f; dx =  speed * 0.25f; dy = 0.0f;        w = lw; h = 2.8f; }
-        else                   { sx =  1.4f; sy = 0.0f; dx = -speed * 0.25f; dy = 0.0f;        w = lw; h = 2.8f; }
+        // Pohybující se laser jede čtvrtinovou rychlostí normálního projektilu
+        if      (ev.edge == EDGE_TOP)    { sx = 0.0f;  sy =  1.4f; dx = 0.0f;         dy = -speed * 0.25f; w = totalLaserLength; h = lw; }
+        else if (ev.edge == EDGE_BOTTOM) { sx = 0.0f;  sy = -1.4f; dx = 0.0f;         dy =  speed * 0.25f; w = totalLaserLength; h = lw; }
+        else if (ev.edge == EDGE_LEFT)   { sx = -1.4f; sy =  0.0f; dx =  speed * 0.25f; dy = 0.0f;          w = lw; h = totalLaserLength; }
+        else                             { sx =  1.4f; sy =  0.0f; dx = -speed * 0.25f; dy = 0.0f;          w = lw; h = totalLaserLength; }
     } else if (ev.type == TILE_DMG) {
         w = sz; h = sz; sx = tx; sy = ty; dx = 0; dy = 0;
     } else if (ev.type == FAST_NORMAL) {
+        // Rychlý projektil letí 2.2× rychleji
         w = sz; h = sz; dx *= 2.2f; dy *= 2.2f;
     } else if (ev.type == WIDE_NORMAL) {
-        if (ev.edge == 0 || ev.edge == 1) { w = sz * 3.0f; h = sz; }
-        else                              { w = sz; h = sz * 3.0f; }
+        // Široký projektil pokrývá 3 buňky; pohybuje se o 20 % pomaleji
+        if (ev.edge == EDGE_TOP || ev.edge == EDGE_BOTTOM) { w = sz * 3.0f; h = sz; }
+        else                                               { w = sz; h = sz * 3.0f; }
         dx *= 0.8f; dy *= 0.8f;
     }
     
     float r = 1.0f, g = 1.0f, b = 1.0f;
     GetAttackColor(ev.type, r, g, b);
 
+    // Lasery a TILE_DMG začínají neaktivní (jen vizuální varování), pak se aktivují v update smyčce
     bool active = true;
     if (ev.type == LASER || ev.type == LONG_LASER || ev.type == TILE_DMG) active = false;
 
@@ -362,8 +383,10 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
     glfwGetWindowSize(window, &width, &height);
     
     float aspect = (height > 0) ? (float)width / (float)height : 1.0f;
-    float x = (((mouseX / width)  * 2.0f - 1.0f) * aspect) / 0.7f;
-    float y = (-((mouseY / height) * 2.0f - 1.0f)) / 0.7f;
+    // Stejný zoom koeficient jako ve vertex shaderu (0.7)
+    const float kViewZoom = 0.7f;
+    float x = (((mouseX / width)  * 2.0f - 1.0f) * aspect) / kViewZoom;
+    float y = (-((mouseY / height) * 2.0f - 1.0f)) / kViewZoom;
 
     auto IsHovered = [x, y](float bx, float by, float bw, float bh) {
         return std::abs(x - bx) < bw / 2.0f && std::abs(y - by) < bh / 2.0f;
@@ -782,6 +805,131 @@ void char_callback(GLFWwindow* window, unsigned int codepoint) {
             editorAudioPath += (char)(0x80 | (codepoint & 0x3F));
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Pomocné funkce pro update jednotlivých typů útoků
+// Každá funkce předpokládá že atk.timer a atk.distanceTravelled už byly
+// aktualizovány v UpdateAttack před voláním.
+// ---------------------------------------------------------------------------
+
+/** @brief Nastaví currentState = GAME_OVER a zastaví audio při kolizi. */
+static void TriggerGameOver() {
+    currentState = GAME_OVER;
+    AudioStop(800);
+}
+
+/**
+ * @brief Update pro NORMAL, FAST_NORMAL a WIDE_NORMAL.
+ * Přímočarý pohyb, okamžitá kolize s hráčem.
+ */
+static void UpdateNormal(Attack& atk, float deltaTime) {
+    atk.x += atk.dx * deltaTime;
+    atk.y += atk.dy * deltaTime;
+    if (checkCollision(atk.x, atk.y, atk.width, atk.height)) TriggerGameOver();
+}
+
+/**
+ * @brief Update pro BOOMERANG.
+ * Přímočarý pohyb; po ujetí kBoomerangTurnDist se obrátí zpět.
+ */
+static void UpdateBoomerang(Attack& atk, float deltaTime) {
+    atk.x += atk.dx * deltaTime;
+    atk.y += atk.dy * deltaTime;
+    // Po ujetí přibližně poloviny hřiště se boomerang vrátí zpět
+    const float kBoomerangTurnDist = 1.8f;
+    if (!atk.returning && atk.distanceTravelled > kBoomerangTurnDist) {
+        atk.dx *= -1.0f; atk.dy *= -1.0f; atk.returning = true;
+    }
+    if (checkCollision(atk.x, atk.y, atk.width, atk.height)) TriggerGameOver();
+}
+
+/**
+ * @brief Update pro LASER.
+ * Varování: 0–1.0 s (neaktivní), aktivní a smrtící: 1.0–1.5 s.
+ */
+static void UpdateLaser(Attack& atk) {
+    if (atk.timer > 1.0f) { atk.active = true;  if (checkCollision(atk.x, atk.y, atk.width, atk.height)) TriggerGameOver(); }
+    if (atk.timer > 1.5f) { atk.active = false; }
+}
+
+/**
+ * @brief Update pro LONG_LASER.
+ * Varování: 0–1.0 s, aktivní: 1.0–4.5 s. Při aktivaci přejde na zlatou barvu.
+ */
+static void UpdateLongLaser(Attack& atk) {
+    if (atk.timer > 1.0f) { atk.active = true; atk.r=1; atk.g=0.8f; atk.b=0; if (checkCollision(atk.x, atk.y, atk.width, atk.height)) TriggerGameOver(); }
+    if (atk.timer > 4.5f) { atk.active = false; }
+}
+
+/**
+ * @brief Update pro TILE_DMG.
+ * Varování: 0–1.2 s, aktivní: 1.2–2.2 s. Při aktivaci přejde na červenou barvu.
+ */
+static void UpdateTileDmg(Attack& atk) {
+    if (atk.timer > 1.2f) { atk.active = true; atk.r=1; atk.g=0.2f; atk.b=0.2f; if (checkCollision(atk.x, atk.y, atk.width, atk.height)) TriggerGameOver(); }
+    if (atk.timer > 2.2f) { atk.active = false; }
+}
+
+/**
+ * @brief Update pro MOVING_LASER.
+ * Přímočarý pohyb čtvrtinovou rychlostí, okamžitá kolize.
+ */
+static void UpdateMovingLaser(Attack& atk, float deltaTime) {
+    atk.x += atk.dx * deltaTime;
+    atk.y += atk.dy * deltaTime;
+    if (checkCollision(atk.x, atk.y, atk.width, atk.height)) TriggerGameOver();
+}
+
+/**
+ * @brief Aktualizuje pozici, timer a stav jednoho útoku pro aktuální snímek.
+ *
+ * Společná část (timer, distanceTravelled) se zpracuje zde, pak se předá
+ * příslušné per-type funkci.
+ *
+ * @param atk       Útok ke zpracování (upravován in-place)
+ * @param deltaTime Čas od posledního snímku (sekundy)
+ */
+void UpdateAttack(Attack& atk, float deltaTime) {
+    atk.timer += deltaTime;
+    atk.distanceTravelled += std::sqrt(atk.dx*atk.dx + atk.dy*atk.dy) * deltaTime;
+
+    switch (atk.type) {
+        case NORMAL:
+        case FAST_NORMAL:
+        case WIDE_NORMAL:  UpdateNormal(atk, deltaTime);      break;
+        case BOOMERANG:    UpdateBoomerang(atk, deltaTime);   break;
+        case LASER:        UpdateLaser(atk);                  break;
+        case LONG_LASER:   UpdateLongLaser(atk);              break;
+        case TILE_DMG:     UpdateTileDmg(atk);                break;
+        case MOVING_LASER: UpdateMovingLaser(atk, deltaTime); break;
+    }
+}
+
+/**
+ * @brief Rozhodne, zda má být útok odstraněn ze scény.
+ *
+ * Útok se odstraní pokud:
+ * - Přeletí mimo hranice hřiště (±2.2 ve světových souřadnicích)
+ * - Vyprší jeho životnost podle typu (časové limity odpovídají UpdateAttack)
+ * - MOVING_LASER ujede celou délku hřiště (0.6 + 2× gridStep)
+ *
+ * @param atk Útok ke kontrole
+ * @return true pokud má být útok odstraněn
+ */
+bool ShouldRemoveAttack(const Attack& atk) {
+    // Hranice mimo které jsou útoky neviditelné a nepotřebné
+    const float kBoundary = 2.2f;
+    // Maximální dráha pohybujícího se laseru před odstraněním
+    const float kMovingLaserMaxDist = 0.6f + 2.0f * gridStep;
+
+    if (atk.x > kBoundary || atk.x < -kBoundary) return true;
+    if (atk.y > kBoundary || atk.y < -kBoundary) return true;
+    if (atk.type == LASER        && atk.timer > 1.6f) return true;
+    if (atk.type == LONG_LASER   && atk.timer > 4.6f) return true;
+    if (atk.type == TILE_DMG     && atk.timer > 2.3f) return true;
+    if (atk.type == MOVING_LASER && atk.distanceTravelled >= kMovingLaserMaxDist) return true;
+    return false;
 }
 
 const char* GetAttackName(AttackType t) {

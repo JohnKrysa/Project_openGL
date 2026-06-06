@@ -1,19 +1,71 @@
+# Grid Dodge
 
+A grid-based dodge game written in C++ using OpenGL, GLFW, GLEW and miniaudio.  
+School project.
 
-# OpenGL Grid Game
+---
 
-If you simply want to play the game and do not wish to build the code (windows only): 
+## Requirements
 
-1.  Download the **`Latest release`** provided.
-2.  Extract the contents to a folder on your computer.
-3.  Find and double-click `Project.exe` to run.
+- Windows 64-bit only (Mac/Linux not supported)
+- [MSYS2](https://www.msys2.org/) with MinGW64
 
-### Prerequisites
-- **Linux:** `sudo apt install libglew-dev libglfw3-dev cmake build-essential`
-- **Windows:** Install [CMake](https://cmake.org/download/) and a compiler (MinGW or Visual Studio).
+---
 
-### How to Build and Run
-1. Open this folder in **VS Code**.
-2. Install the **CMake Tools** extension.
-3. Click **Configure** when prompted.
-4. Press **F5** to build and run.
+## Build
+
+### 1. Install MSYS2 dependencies
+
+Open **MSYS2 MinGW64** terminal and run:
+
+```bash
+pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja \
+          mingw-w64-x86_64-glew mingw-w64-x86_64-glfw
+```
+
+### 2. Clone the repository
+
+```bash
+git clone --recurse-submodules https://github.com/JohnKrysa/Project_openGL.git
+cd Project_openGL/latest
+```
+
+> `--recurse-submodules` automatically downloads miniaudio.
+
+### 3. Build
+
+```bash
+cmake -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/release
+```
+
+The executable `GridDodge.exe` will appear in the project root.
+
+---
+
+## Project structure
+
+```
+grid-dodge/
+├── audio/          # Music files
+├── levels/         # Level files (.txt)
+├── deps/
+│   └── miniaudio/  # Audio library (git submodule)
+├── main.cpp
+├── game.cpp
+├── utils.cpp
+├── audio.cpp / audio.h
+├── globals.cpp
+├── common.h
+└── CMakeLists.txt
+```
+
+---
+
+## Dependencies
+
+| Library | Version | License |
+|---------|---------|---------|
+| [GLFW](https://www.glfw.org/) | 3.x | zlib |
+| [GLEW](https://glew.sourceforge.net/) | 2.x | MIT |
+| [miniaudio](https://miniaud.io/) | latest | MIT |

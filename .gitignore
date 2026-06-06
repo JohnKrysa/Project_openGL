@@ -1,2 +1,14 @@
 .vscode/
 levels/
+
+build/
+*.exe
+*.o
+*.obj
+ 
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Ninja*
+ 
+deps/miniaudio/build/

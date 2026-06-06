@@ -49,6 +49,19 @@ enum AttackType {
 };
 
 /**
+ * @brief Hrana, ze které útok vylétá / spawne se.
+ *
+ * Místo holých čísel (0–3) se používá tento enum, aby byl kód
+ * čitelnější a kompilátor mohl upozornit na chybějící case větve.
+ */
+enum SpawnEdge {
+    EDGE_TOP    = 0, ///< Útok letí shora dolů
+    EDGE_BOTTOM = 1, ///< Útok letí zdola nahoru
+    EDGE_LEFT   = 2, ///< Útok letí zleva doprava
+    EDGE_RIGHT  = 3  ///< Útok letí zprava doleva
+};
+
+/**
  * @brief Reprezentuje jeden aktivní útok ve hře.
  */
 struct Attack {
@@ -72,7 +85,7 @@ struct LevelEvent {
     float triggerTime;  ///< Čas v sekundách od začátku levelu
     int   gridCol;      ///< Sloupec mřížky (0 = levý)
     int   gridRow;      ///< Řádek mřížky (0 = spodní)
-    int   edge;         ///< Hrana spawnu: 0=shora, 1=zdola, 2=zleva, 3=zprava
+    int   edge;         ///< Hrana spawnu; viz SpawnEdge (0=shora, 1=zdola, 2=zleva, 3=zprava)
 };
 
 /**
@@ -114,7 +127,7 @@ extern Level   currentLevel;         ///< Data aktuálně načteného levelu
 extern int     editorCursorCol;      ///< Kurzor editoru – sloupec
 extern int     editorCursorRow;      ///< Kurzor editoru – řádek
 extern float   editorTime;           ///< Aktuální čas na časové ose editoru
-extern int     editorSelectedEdge;   ///< Vybraná hrana spawnu v editoru (0–3)
+extern int     editorSelectedEdge;   ///< Vybraná hrana spawnu v editoru (viz SpawnEdge)
 extern bool    editorPlaying;        ///< Zda editor přehrává preview levelu
 extern float   editorPlayStart;      ///< Časová značka začátku přehrávání v editoru
 extern size_t  editorNextEvent;      ///< Index příštího eventu ke spawnu při preview
@@ -211,6 +224,27 @@ bool checkCollision(float ax, float ay, float aw, float ah);
  * @return Krátký řetězec, např. "NORMAL", "LASER"
  */
 const char* GetAttackName(AttackType t);
+
+/**
+ * @brief Aktualizuje pozici, timer a stav jednoho útoku pro aktuální snímek.
+ *
+ * Pohybuje útokem, přepíná active flag u laserů/tile a detekuje kolizi s hráčem.
+ * Při kolizi nastaví currentState = GAME_OVER a zavolá AudioStop(800).
+ *
+ * @param atk       Útok ke zpracování (upravován in-place)
+ * @param deltaTime Čas od posledního snímku (sekundy)
+ */
+void UpdateAttack(Attack& atk, float deltaTime);
+
+/**
+ * @brief Rozhodne, zda má být útok odstraněn ze scény.
+ *
+ * Útok je odstraněn pokud vyletí mimo hranice hřiště nebo vyprší jeho životnost.
+ *
+ * @param atk Útok ke kontrole
+ * @return true pokud má být útok odstraněn
+ */
+bool ShouldRemoveAttack(const Attack& atk);
 
 // ---------------------------------------------------------------------------
 // Renderovací / shader funkce

@@ -109,16 +109,21 @@ int main() {
         float aspect = (height > 0) ? (float)width / (float)height : 1.0f;
 
         double mx, my; glfwGetCursorPos(window, &mx, &my);
-        float hx = (((mx / width) * 2.0f - 1.0f) * aspect) / 0.7f;
-        float hy = (-(((float)my / height) * 2.0f - 1.0f)) / 0.7f;
+        // Převod pozice kurzoru z pixelů do souřadnicového prostoru scény.
+        // Koeficient 0.7 odpovídá stejnému "zoom" faktoru jako ve vertex shaderu
+        // (gl_Position = vec4(pos.x / aspect * 0.7, pos.y * 0.7, ...)).
+        const float kViewZoom = 0.7f;
+        float hx = (((mx / width) * 2.0f - 1.0f) * aspect) / kViewZoom;
+        float hy = (-(((float)my / height) * 2.0f - 1.0f)) / kViewZoom;
         auto Hover = [hx, hy](float bx, float by, float bw, float bh) {
             return std::abs(hx - bx) < bw/2.0f && std::abs(hy - by) < bh/2.0f;
         };
 
         if (currentState == LEVEL_EDITOR && isDraggingTimeline) {
-            float tlStart = -1.25f;
-            float tlEnd = 1.25f;
-            float ratio = (hx - tlStart) / (tlEnd - tlStart); 
+            // Časová osa editoru sahá od TL_START do TL_END ve souřadnicích scény
+            const float TL_START = -1.25f;
+            const float TL_END   =  1.25f;
+            float ratio = (hx - TL_START) / (TL_END - TL_START); 
             editorTime = std::max(0.0f, std::min(ratio * currentLevel.duration, currentLevel.duration));
         }
 
@@ -153,39 +158,8 @@ int main() {
             }
 
             for (auto it = attacks.begin(); it != attacks.end(); ) {
-                it->timer += deltaTime;
-                float moveDist = std::sqrt(it->dx*it->dx + it->dy*it->dy) * deltaTime;
-                it->distanceTravelled += moveDist;
-
-                if (it->type == NORMAL || it->type == FAST_NORMAL || it->type == WIDE_NORMAL) {
-                    it->x += it->dx * deltaTime; it->y += it->dy * deltaTime;
-                    if (checkCollision(it->x, it->y, it->width, it->height)) { currentState = GAME_OVER; AudioStop(800); }
-                } else if (it->type == BOOMERANG) {
-                    it->x += it->dx * deltaTime; it->y += it->dy * deltaTime;
-                    if (!it->returning && it->distanceTravelled > 1.8f) {
-                        it->dx *= -1.0f; it->dy *= -1.0f; it->returning = true;
-                    }
-                    if (checkCollision(it->x, it->y, it->width, it->height)) { currentState = GAME_OVER; AudioStop(800); }
-                } else if (it->type == LASER) {
-                    if (it->timer > 1.0f) { it->active = true; if (checkCollision(it->x, it->y, it->width, it->height)) { currentState = GAME_OVER; AudioStop(800); } }
-                    if (it->timer > 1.5f) it->active = false;
-                } else if (it->type == LONG_LASER) {
-                    if (it->timer > 1.0f) { it->active = true; it->r=1; it->g=0.8f; it->b=0; if (checkCollision(it->x, it->y, it->width, it->height)) { currentState = GAME_OVER; AudioStop(800); } }
-                    if (it->timer > 4.5f) it->active = false;
-                } else if (it->type == TILE_DMG) {
-                    if (it->timer > 1.2f) { it->active = true; it->r=1; it->g=0.2f; it->b=0.2f; if (checkCollision(it->x, it->y, it->width, it->height)) { currentState = GAME_OVER; AudioStop(800); } }
-                    if (it->timer > 2.2f) it->active = false;
-                } else if (it->type == MOVING_LASER) {
-                    it->x += it->dx * deltaTime; it->y += it->dy * deltaTime;
-                    if (checkCollision(it->x, it->y, it->width, it->height)) { currentState = GAME_OVER; AudioStop(800); }
-                }
-
-                bool remove = (it->y > 2.2f || it->y < -2.2f || it->x > 2.2f || it->x < -2.2f ||
-                               (it->type == LASER       && it->timer > 1.6f) ||
-                               (it->type == LONG_LASER  && it->timer > 4.6f) ||
-                               (it->type == TILE_DMG    && it->timer > 2.3f) ||
-                               (it->type == MOVING_LASER && it->distanceTravelled >= (0.6f + 2.0f * gridStep)));
-                if (remove) it = attacks.erase(it); else ++it;
+                UpdateAttack(*it, deltaTime);
+                if (ShouldRemoveAttack(*it)) it = attacks.erase(it); else ++it;
             }
         }
 

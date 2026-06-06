@@ -1,0 +1,7 @@
+[submodule "deps/miniaudio"]
+	path = deps/miniaudio
+	url  = https://github.com/mackron/miniaudio.git
+	# Sledujeme tag místo master — stabilní, ale snadno updatovatelné:
+	#   git submodule update --remote deps/miniaudio
+	# nebo pro konkrétní verzi:
+	#   cd deps/miniaudio && git checkout v0.11.21
