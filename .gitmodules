@@ -1,0 +1,3 @@
+[submodule "latest/deps/miniaudio"]
+	path = latest/deps/miniaudio
+	url = https://github.com/mackron/miniaudio.git
