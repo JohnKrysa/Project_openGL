@@ -18,6 +18,10 @@ cd Project_openGL/latest
 
 > `--recurse-submodules` automatically downloads miniaudio.
 
+### 4. Change directory
+
+Change directory to the one where is CMakeLists.txt located. (Should be in the folder latest in the downloaded project)
+
 ### 3. Build
 
 ```bash
