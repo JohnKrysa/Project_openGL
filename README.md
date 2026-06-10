@@ -21,8 +21,8 @@ cd Project_openGL/latest
 ### 3. Build
 
 ```bash
-cmake -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build/release
+cmake -B build/latest -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/latest
 ```
 
 The executable `GridDodge.exe` will appear in the project root.
@@ -32,7 +32,7 @@ The executable `GridDodge.exe` will appear in the project root.
 ## Project structure
 
 ```
-grid-dodge/
+latest/
 ├── audio/          # Music files
 ├── levels/         # Level files (.txt)
 ├── deps/
